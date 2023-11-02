@@ -5,8 +5,9 @@
   See README.md for target information and revision history
 */
 
-// Step 1: Set conditional compile flags
-// #define DEBUG 	// Output to serial port
+// Configuration Step 1: Set debug message output
+// comment out to turn off; 1 = summary, 2 = verbose
+#define DEBUG 1
 
 // Step 2: Set battery size if applicable
 // based on a settings curve in the LC709203F datasheet
@@ -19,10 +20,19 @@
 // #define BATTERY_APA 0x32 // 2500mAH
 // #define BATTERY_APA 0x36 // 3000mAH
 
+const int neoPixelCount = 4;
+const int neoPixelBrightness = 5;
+
+const String nameFirst = "Eric";
+const String nameLast = "Klein";
+const String nameEmail = "eric@lemnos.vc";
+
 #define SITE_ALTITUDE	90 // calibrates SCD40, Mercer Island, WA, in meters above sea level
 
 // Sleep time if hardware error occurs in seconds
 #define HARDWARE_ERROR_INTERVAL 10
+
+// Configuration variables that are less likely to require changes
 
 // Pin config for e-paper display
 
