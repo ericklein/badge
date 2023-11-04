@@ -1,13 +1,13 @@
 /*
   Project Name:   badge
-  Description:    Magtag as conference badge
+  Description:    Adafruit Magtag as conference badge
 
   See README.md for target information and revision history
 */
 
 // Configuration Step 1: Set debug message output
 // comment out to turn off; 1 = summary, 2 = verbose
-#define DEBUG 1
+// #define DEBUG 1
 
 // Step 2: Set battery size if applicable
 // based on a settings curve in the LC709203F datasheet
@@ -27,10 +27,15 @@ const String nameFirst = "Eric";
 const String nameLast = "Klein";
 const String nameEmail = "eric@lemnos.vc";
 
-#define SITE_ALTITUDE	90 // calibrates SCD40, Mercer Island, WA, in meters above sea level
+// #define SITE_ALTITUDE	90 // calibrates SCD40, Mercer Island, WA, in meters above sea level
+#define SITE_ALTITUDE 236 // Pasadena, CA (SuperCon!)
 
-// Sleep time if hardware error occurs in seconds
-#define HARDWARE_ERROR_INTERVAL 10
+// BUTTON_A = 15, BUTTON_B = 14, BUTTON_C = 12, BUTTON_D = 11
+#define BUTTON_PIN_BITMASK 0xD800
+// #define BUTTON_PIN_BITMASK 0x8000 //(GPIO15)
+
+// bitmask for ext1_wakeup
+#define BUTTON_PIN_BITMASK	0x8003000 // 2^13+2^12+2^27 in hex
 
 // Configuration variables that are less likely to require changes
 
@@ -55,3 +60,6 @@ const String co2Labels[5]={"Good", "OK", "So-So", "Poor", "Bad"};
 	#define READS_PER_SAMPLE	5
   #define SAMPLE_SIZE 			10
 #endif
+
+// Sleep time if hardware error occurs in seconds
+#define HARDWARE_ERROR_INTERVAL 10

@@ -1,6 +1,6 @@
 /*
   Project Name:   badge
-  Description:    Magtag as conference badge
+  Description:    Adafruit Magtag as conference badge
 
   See README.md for target information and revision history
 */
@@ -110,63 +110,101 @@ void setup()
   debugMessage("epd: power on in B/W",1);
 
   // Initialize environmental sensor
-  if (!sensorInit()) {
+  if (!sensorInit())
+  {
     debugMessage("Environment sensor failed to initialize",1);
     screenAlert("No CO2 sensor?");
     // This error often occurs right after a firmware flash and reset.
     // Hardware deep sleep typically resolves it, so quickly cycle the hardware
     powerDisable(HARDWARE_ERROR_INTERVAL);
   }
-  // Initialize EPD with the first screen
-  screenName(nameFirst,nameLast,nameEmail,0);
-}
 
-void loop()
-{
-  if (! digitalRead(BUTTON_A)) 
+  // what woke the Magtag up?
+  esp_sleep_wakeup_cause_t wakeup_reason;
+  wakeup_reason = esp_sleep_get_wakeup_cause();
+  switch (wakeup_reason)
   {
-    debugMessage("button press: A",1);
-    neopixels.clear();
-    neopixels.show();
-    neopixels.setPixelColor(3,255,0,0);
-    neopixels.show();
-    screenName(nameFirst,nameLast,nameEmail,0);
-  }
-  else if (! digitalRead(BUTTON_B)) {
-    debugMessage("button press: B",1);
-    neopixels.clear();
-    neopixels.show();
-    neopixels.setPixelColor(2,0,255,0);
-    neopixels.show();
-    if (!sensorRead()) {
-      debugMessage("SCD40 returned no/bad data",1);
-      screenAlert("SCD40 no/bad data");
-      powerDisable(HARDWARE_ERROR_INTERVAL);
+    // case ESP_SLEEP_WAKEUP_EXT0 :
+    case ESP_SLEEP_WAKEUP_EXT1 :
+    {
+      int gpioReason = log(esp_sleep_get_ext1_wakeup_status())/log(2);
+      debugMessage(String("Wakeup caused by signal from GPIO pin: ") + gpioReason,1);
+      switch (gpioReason)
+      {
+        case BUTTON_A : // screenName
+        {
+          debugMessage("button press: A",1);
+          neopixels.setPixelColor(3,255,0,0);
+          neopixels.show();
+          screenName(nameFirst,nameLast,nameEmail,0);
+        }
+        break;
+        case BUTTON_B : // screenCO2
+        { 
+          debugMessage("button press: B",1);
+          neopixels.setPixelColor(2,0,255,0);
+          neopixels.show();
+          if (!sensorRead()) 
+          {
+            debugMessage("SCD40 returned no/bad data",1);
+            screenAlert("SCD40 no/bad data");
+            powerDisable(HARDWARE_ERROR_INTERVAL);
+          }
+          batteryReadVoltage();
+          screenCO2();
+          if (sampleCounter<SAMPLE_SIZE)
+            sampleCounter++;
+          else
+            sampleCounter = 0;
+        }
+        break;
+        case BUTTON_C : // screenQRCode
+        {
+          debugMessage("button press: C",1);
+          neopixels.clear();
+          neopixels.show();
+          neopixels.setPixelColor(1,0,0,255);
+          neopixels.show();
+          screenQRCode();
+        }
+        break;
+        case BUTTON_D : // screenThreeThings
+        {
+          debugMessage("button press: D",1);
+          neopixels.setPixelColor(0,255,255,255);
+          neopixels.show();
+          screenThreeThings();
+        }
+        break;
+      }
     }
-    batteryReadVoltage();
-    screenCO2();
-    if (sampleCounter<SAMPLE_SIZE)
-      sampleCounter++;
-    else
-      sampleCounter = 0;
+    break;
+    case ESP_SLEEP_WAKEUP_TIMER : // always return to screenMain()
+    {
+      debugMessage("Wakeup caused by timer");
+    }
+    break;
+    case ESP_SLEEP_WAKEUP_TOUCHPAD : 
+    {
+      debugMessage("Wakeup caused by touchpad",1);
+    }  
+    break;
+    case ESP_SLEEP_WAKEUP_ULP : 
+    {
+      debugMessage("Wakeup caused by ULP program",1);
+    }  
+    break; 
+    default :
+    {
+      // likely caused by reset after programming
+      debugMessage(String("Wakeup caused by ") + wakeup_reason);
+    }
   }
-  else if (! digitalRead(BUTTON_C)) {
-    debugMessage("button press: C",1);
-    neopixels.clear();
-    neopixels.show();
-    neopixels.setPixelColor(1,0,0,255);
-    neopixels.show();
-    screenQRCode();
-  }
-  else if (! digitalRead(BUTTON_D)) {
-    debugMessage("button press: D",1);
-    neopixels.clear();
-    neopixels.show();
-    neopixels.setPixelColor(0,255,255,255);
-    neopixels.show();
-    screenThreeThings();
-  }  
-}
+   // deep sleep the MagTag
+  powerDisable(SAMPLE_INTERVAL);
+} 
+
+void loop() {}
 
 void screenAlert(String messageText)
 // Display critical error message on screen
@@ -432,7 +470,9 @@ void powerNeoPixelEnable()
   neopixels.setBrightness(neoPixelBrightness);
   neopixels.show(); // Initialize all pixels to off
   debugMessage("power: neopixels on",1);
-  if (DEBUG == 2) neoPixelTest();
+  #ifdef DEBUG
+    if (DEBUG == 2) neoPixelTest();
+  #endif
 }
 
 void neoPixelTest()
@@ -478,9 +518,28 @@ void powerDisable(int deepSleepTime)
   //power down neopixels
   pinMode(NEOPIXEL_POWER, OUTPUT);
   digitalWrite(NEOPIXEL_POWER, HIGH); // off
-  debugMessage("power off: neopixels",1);  
+  debugMessage("power off: neopixels",1);
 
-  // ESP32 deepsleep
+  // Using external trigger ext0 to support one button interupt
+  rtc_gpio_pulldown_en(GPIO_NUM_15);
+  rtc_gpio_pullup_dis(GPIO_NUM_15);
+
+  rtc_gpio_pulldown_en(GPIO_NUM_14);
+  rtc_gpio_pullup_dis(GPIO_NUM_14);
+
+  rtc_gpio_pulldown_en(GPIO_NUM_12);
+  rtc_gpio_pullup_dis(GPIO_NUM_12);
+
+  rtc_gpio_pulldown_en(GPIO_NUM_11);
+  rtc_gpio_pullup_dis(GPIO_NUM_11);
+
+  // esp_sleep_enable_ext0_wakeup(GPIO_NUM_15,0);
+
+  // Using external trigger ext1 to support multiple button interupt
+  esp_sleep_enable_ext1_wakeup(BUTTON_PIN_BITMASK,ESP_EXT1_WAKEUP_ANY_HIGH);
+  // esp_sleep_enable_ext1_wakeup(BUTTON_PIN_BITMASK,ESP_EXT1_WAKEUP_ALL_LOW);
+
+  // ESP32 timer based deep sleep
   esp_sleep_enable_timer_wakeup(deepSleepTime*1000000); // ESP microsecond modifier
   debugMessage(String("powerDisable complete: ESP32 deep sleep for ") + (deepSleepTime) + " seconds",1);
   esp_deep_sleep_start();
