@@ -27,6 +27,8 @@ typedef struct
 } hdweData;
 hdweData hardwareData;
 
+// #include "driver/rtc_io.h"
+
 // Magtag neopixels
 #include <Adafruit_NeoPixel.h>
 Adafruit_NeoPixel neopixels = Adafruit_NeoPixel(neoPixelCount, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
@@ -124,8 +126,8 @@ void setup()
   wakeup_reason = esp_sleep_get_wakeup_cause();
   switch (wakeup_reason)
   {
-    // case ESP_SLEEP_WAKEUP_EXT0 :
-    case ESP_SLEEP_WAKEUP_EXT1 :
+    case ESP_SLEEP_WAKEUP_EXT0 :
+    // case ESP_SLEEP_WAKEUP_EXT1 :
     {
       int gpioReason = log(esp_sleep_get_ext1_wakeup_status())/log(2);
       debugMessage(String("Wakeup caused by signal from GPIO pin: ") + gpioReason,1);
@@ -179,11 +181,11 @@ void setup()
       }
     }
     break;
-    case ESP_SLEEP_WAKEUP_TIMER : // always return to screenMain()
-    {
-      debugMessage("Wakeup caused by timer");
-    }
-    break;
+    // case ESP_SLEEP_WAKEUP_TIMER : // always return to screenMain()
+    // {
+    //   debugMessage("Wakeup caused by timer");
+    // }
+    // break;
     case ESP_SLEEP_WAKEUP_TOUCHPAD : 
     {
       debugMessage("Wakeup caused by touchpad",1);
@@ -196,12 +198,15 @@ void setup()
     break; 
     default :
     {
-      // likely caused by reset after programming
-      debugMessage(String("Wakeup caused by ") + wakeup_reason);
+      // likely caused by reset after firmware load
+      neopixels.setPixelColor(3,255,0,0);
+      neopixels.show();
+      debugMessage(String("Wakeup caused by ") + wakeup_reason,1);
+      screenName(nameFirst,nameLast,nameEmail,0);
     }
   }
-   // deep sleep the MagTag
-  powerDisable(SAMPLE_INTERVAL);
+  // deep sleep the MagTag
+  powerDisable(SLEEP_TIME);
 } 
 
 void loop() {}
@@ -520,24 +525,23 @@ void powerDisable(int deepSleepTime)
   digitalWrite(NEOPIXEL_POWER, HIGH); // off
   debugMessage("power off: neopixels",1);
 
+  // rtc_gpio_pulldown_en(GPIO_NUM_15);
+  // rtc_gpio_pullup_dis(GPIO_NUM_15);
+
+  // rtc_gpio_pulldown_en(GPIO_NUM_14);
+  // rtc_gpio_pullup_dis(GPIO_NUM_14);
+
+  // rtc_gpio_pulldown_en(GPIO_NUM_12);
+  // rtc_gpio_pullup_dis(GPIO_NUM_12);
+
+  // rtc_gpio_pulldown_en(GPIO_NUM_11);
+  // rtc_gpio_pullup_dis(GPIO_NUM_11);
+
   // Using external trigger ext0 to support one button interupt
-  rtc_gpio_pulldown_en(GPIO_NUM_15);
-  rtc_gpio_pullup_dis(GPIO_NUM_15);
-
-  rtc_gpio_pulldown_en(GPIO_NUM_14);
-  rtc_gpio_pullup_dis(GPIO_NUM_14);
-
-  rtc_gpio_pulldown_en(GPIO_NUM_12);
-  rtc_gpio_pullup_dis(GPIO_NUM_12);
-
-  rtc_gpio_pulldown_en(GPIO_NUM_11);
-  rtc_gpio_pullup_dis(GPIO_NUM_11);
-
-  // esp_sleep_enable_ext0_wakeup(GPIO_NUM_15,0);
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_15,0);
 
   // Using external trigger ext1 to support multiple button interupt
-  esp_sleep_enable_ext1_wakeup(BUTTON_PIN_BITMASK,ESP_EXT1_WAKEUP_ANY_HIGH);
-  // esp_sleep_enable_ext1_wakeup(BUTTON_PIN_BITMASK,ESP_EXT1_WAKEUP_ALL_LOW);
+  // esp_sleep_enable_ext1_wakeup(BUTTON_PIN_BITMASK,ESP_EXT1_WAKEUP_ANY_HIGH);
 
   // ESP32 timer based deep sleep
   esp_sleep_enable_timer_wakeup(deepSleepTime*1000000); // ESP microsecond modifier

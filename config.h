@@ -7,7 +7,7 @@
 
 // Configuration Step 1: Set debug message output
 // comment out to turn off; 1 = summary, 2 = verbose
-// #define DEBUG 1
+#define DEBUG 1
 
 // Step 2: Set battery size if applicable
 // based on a settings curve in the LC709203F datasheet
@@ -30,12 +30,15 @@ const String nameEmail = "eric@lemnos.vc";
 // #define SITE_ALTITUDE	90 // calibrates SCD40, Mercer Island, WA, in meters above sea level
 #define SITE_ALTITUDE 236 // Pasadena, CA (SuperCon!)
 
-// BUTTON_A = 15, BUTTON_B = 14, BUTTON_C = 12, BUTTON_D = 11
-#define BUTTON_PIN_BITMASK 0xD800
-// #define BUTTON_PIN_BITMASK 0x8000 //(GPIO15)
-
 // bitmask for ext1_wakeup
-#define BUTTON_PIN_BITMASK	0x8003000 // 2^13+2^12+2^27 in hex
+// BUTTON_A = 15, BUTTON_B = 14, BUTTON_C = 12, BUTTON_D = 11
+//#define BUTTON_PIN_BITMASK 0xD800 // 2^15+2^14+2^12+2^11 in hex
+#define BUTTON_PIN_BITMASK 0xC000 // 2^15+2^14 in hex
+// #define BUTTON_PIN_BITMASK 0x9800 // 2^15+2^12+2^11 in hex
+// #define BUTTON_PIN_BITMASK 0x8800 // 2^15+2^11 in hex
+// #define BUTTON_PIN_BITMASK 0x1800 // 2^12+2^11 in hex
+
+// #define BUTTON_PIN_BITMASK 0x8000 //(GPIO15)
 
 // Configuration variables that are less likely to require changes
 
@@ -56,9 +59,11 @@ const String co2Labels[5]={"Good", "OK", "So-So", "Poor", "Bad"};
 	#define READS_PER_SAMPLE	1
 	// # of uint_16 CO2 samples saved to nvStorage, so limit this
   #define SAMPLE_SIZE				2
+	#define SLEEP_TIME				15
 #else
 	#define READS_PER_SAMPLE	5
   #define SAMPLE_SIZE 			10
+	#define SLEEP_TIME				60
 #endif
 
 // Sleep time if hardware error occurs in seconds
