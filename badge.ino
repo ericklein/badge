@@ -343,13 +343,13 @@ void screenQRCodeCO2(String firstName, String lastName, String url)
   display.setCursor(xMargins, 240);
   display.print("CO");
   display.setCursor(xMargins+50,240);
-  display.print(": " + String(co2Labels[co2range]));
+  display.print(" " + String(co2Labels[co2range]));
   display.setFont(&FreeSans9pt7b);
   display.setCursor(xMargins+35,(240+10));
   display.print("2");
   // value line
   display.setFont();
-  display.setCursor((xMargins+88),(240+7));
+  display.setCursor((xMargins+80),(240+7));
   display.print("(" + String(sensorData.ambientCO2[sampleCounter]) + ")");
 
   // draw battery in the lower right corner. -3 in first parameter accounts for battery nub
