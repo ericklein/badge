@@ -1,16 +1,18 @@
 /*
   Project Name:   badge
-  Description:    Adafruit Magtag as conference badge
+  Description:    conference badge displaying interesting information
 
   See README.md for target information and revision history
 */
 
 // Configuration Step 1: Set debug message output
 // comment out to turn off; 1 = summary, 2 = verbose
-// #define DEBUG 1
 
-// Step 2: Set battery size if applicable
+#define DEBUG 2
+
+// Configuration Step 2: Set battery size if applicable
 // based on a settings curve in the LC709203F datasheet
+
 // #define BATTERY_APA 0x08 // 100mAH
 // #define BATTERY_APA 0x0B // 200mAH
 #define BATTERY_APA 0x10 // 500mAH
@@ -20,33 +22,51 @@
 // #define BATTERY_APA 0x32 // 2500mAH
 // #define BATTERY_APA 0x36 // 3000mAH
 
-const int neoPixelCount = 4;
-const int neoPixelBrightness = 5;
+// Configuration Step 3: Set personal information for screen display
+const String nameFirst	= "Eric";
+const String nameLast		= "Klein";
+const String nameEmail	= "eric@lemnos.vc";
 
-const String nameFirst = "Eric";
-const String nameLast = "Klein";
-const String nameEmail = "eric@lemnos.vc";
+// Configuration Step 4: QR Code information for screen display
+const int qrCodeScaling = 3; 	// QRCode square size = Round ((smallest screen dimension)-((xmargin)*(ymargin)/33[LOW_ECC])
+const int qrCodeVersion = 4;
+const String qrCodeURL 	= "https://www.linkedin.com/in/ericklein";
 
-// #define SITE_ALTITUDE	90 // calibrates SCD40, Mercer Island, WA, in meters above sea level
-#define SITE_ALTITUDE 236 // Pasadena, CA (SuperCon!)
-
-// BUTTON_A = 15, BUTTON_B = 14, BUTTON_C = 12, BUTTON_D = 11
-#define BUTTON_PIN_BITMASK 0xD800
-// #define BUTTON_PIN_BITMASK 0x8000 //(GPIO15)
-
-// bitmask for ext1_wakeup
-#define BUTTON_PIN_BITMASK	0x8003000 // 2^13+2^12+2^27 in hex
+// Configuration Step 5: Set site altitude in meters for SCD40 calibration
+#define SITE_ALTITUDE	90 // calibrates SCD40, Mercer Island, WA, in meters above sea level
+// #define SITE_ALTITUDE 236 // Pasadena, CA (SuperCon!)
 
 // Configuration variables that are less likely to require changes
 
-// Pin config for e-paper display
+// e-paper display
+// Pin config
 
 // Adafruit MagTag
-	// #define EPD_CS      8 	// ECS, value comes from board definition package
-	// #define EPD_DC      7   // D/C, value comes from board definition package
-	#define SRAM_CS     -1  // SRCS, can set to -1 to not use a pin (uses ~10KB RAM)
-	// #define EPD_RESET   6   // RST, value comes from board definition package
-	#define EPD_BUSY    5   // BUSY, can set to -1 to not use a pin (will wait a fixed delay)
+// #define EPD_CS      8 	// ECS, value comes from board definition package
+// #define EPD_DC      7   // D/C, value comes from board definition package
+#define SRAM_CS     -1  // SRCS, can set to -1 to not use a pin (uses ~10KB RAM)
+// #define EPD_RESET   6   // RST, value comes from board definition package
+#define EPD_BUSY    5   // BUSY, can set to -1 to not use a pin (will wait a fixed delay)
+
+// Allow for adjustable screen as needed for physical packaging. 
+// 0 orients horizontally with neopixels on top
+// 1 orients vertically with flex cable as top
+#define DISPLAY_ROTATION 1
+
+// MagTag neopixel configuration
+// const int neoPixelCount = 4;
+// const int neoPixelBrightness = 5;
+
+// Button handling for ESP32 deep sleep
+// MagTag BUTTON_A = 15, BUTTON_B = 14, BUTTON_C = 12, BUTTON_D = 11 (all RTC pins)
+
+// ext1 wakeup (multiple buttons via bitmask)
+//#define BUTTON_PIN_BITMASK 0xD800 // All buttons; 2^15+2^14+2^12+2^11 in hex
+// #define BUTTON_PIN_BITMASK 0xC000 // Buttons A,B; 2^15+2^14 in hex
+// #define BUTTON_PIN_BITMASK 0x9800 // Buttons A,C,D; 2^15+2^12+2^11 in hex
+// #define BUTTON_PIN_BITMASK 0x8800 // Buttons A,D; 2^15+2^11 in hex
+// #define BUTTON_PIN_BITMASK 0x1800 // Buttons C,D; 2^12+2^11 in hex
+// #define BUTTON_PIN_BITMASK 0x8000 // Button A; 2^15 in hex
 
 // CO2 configuration
 const String co2Labels[5]={"Good", "OK", "So-So", "Poor", "Bad"};
@@ -56,9 +76,11 @@ const String co2Labels[5]={"Good", "OK", "So-So", "Poor", "Bad"};
 	#define READS_PER_SAMPLE	1
 	// # of uint_16 CO2 samples saved to nvStorage, so limit this
   #define SAMPLE_SIZE				2
+	#define SLEEP_TIME				15
 #else
 	#define READS_PER_SAMPLE	5
   #define SAMPLE_SIZE 			10
+	#define SLEEP_TIME				60
 #endif
 
 // Sleep time if hardware error occurs in seconds
