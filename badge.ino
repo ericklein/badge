@@ -1,6 +1,6 @@
 /*
   Project Name:   badge
-  Description:    Adafruit Magtag as conference badge
+  Description:    conference badge displaying interesting information
 
   See README.md for target information and revision history
 */
@@ -27,13 +27,11 @@ typedef struct
 } hdweData;
 hdweData hardwareData;
 
-// #include "driver/rtc_io.h"
-
 // Magtag neopixels
-#include <Adafruit_NeoPixel.h>
-Adafruit_NeoPixel neopixels = Adafruit_NeoPixel(neoPixelCount, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
+// #include <Adafruit_NeoPixel.h>
+// Adafruit_NeoPixel neopixels = Adafruit_NeoPixel(neoPixelCount, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
 
-// initialize scd40 environment sensor
+// scd40 environment sensor
 #include <SensirionI2CScd4x.h>
 SensirionI2CScd4x envSensor;
 
@@ -44,25 +42,25 @@ Adafruit_LC709203F lc;
 // eink support
 #include <Adafruit_ThinkInk.h>
 
-#include <Fonts/FreeSans9pt7b.h>
-#include <Fonts/FreeSans12pt7b.h>
-#include <Fonts/FreeSans18pt7b.h>
-#include <Fonts/FreeSans24pt7b.h>
+#include <Fonts/FreeSans9pt7b.h>    // screenCO2
+#include <Fonts/FreeSans12pt7b.h>   // screenAlert, screenName, screenCO2
+#include <Fonts/FreeSans18pt7b.h>   // screenThreeThings
+#include <Fonts/FreeSans24pt7b.h>   // screenCO2
 
-// #include "Fonts/FreeSerifItalic24pt7b.h"
-// #include "Fonts/FreeSerifItalic48pt7b.h"
-// #include "Fonts/FreeSerifItalic12pt7b.h"
+#include "Fonts/FreeSerif24pt7b.h"  // screenName
+#include "Fonts/FreeSerif48pt7b.h"  // screenName
+#include "Fonts/FreeSerif18pt7b.h"  // screenQRCodeCO2
+#include "Fonts/FreeSerif12pt7b.h"  // screenQRCodeCO2
 
-#include "Fonts/FreeSerif24pt7b.h"
-#include "Fonts/FreeSerif48pt7b.h"
-#include "Fonts/FreeSerif12pt7b.h"
-
-#include "Fonts/meteocons24pt7b.h"
+#include "Fonts/meteocons24pt7b.h"  //screenCO2
 
 // Special glyphs for screenCO2
 #include "Fonts/glyphs.h"
 
-// 2.96" greyscale display with 196x128 pixels
+// QR code support
+#include "qrcoderm.h"
+
+// 2.96" greyscale display with 296x128 pixels
 // colors are EPD_WHITE, EPD_BLACK, EPD_GRAY, EPD_LIGHT, EPD_DARK
 ThinkInk_290_Grayscale4_T5 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY);
 
@@ -96,20 +94,14 @@ void setup()
     debugMessage("Badge started",1);
   #endif
 
-  powerNeoPixelEnable();
-
-  // prep MagTag buttons
-  pinMode(BUTTON_A, INPUT_PULLUP);
-  pinMode(BUTTON_B, INPUT_PULLUP);
-  pinMode(BUTTON_C, INPUT_PULLUP);
-  pinMode(BUTTON_D, INPUT_PULLUP);
-  debugMessage("buttons ready",1);
+  // powerNeoPixelEnable();
 
   // there is no way to query screen for status
   //display.begin(THINKINK_GRAYSCALE4);
   // debugMessage ("epd: power on in grayscale",1);
   display.begin(THINKINK_MONO);
-  debugMessage("epd: power on in B/W",1);
+  display.setRotation(DISPLAY_ROTATION);
+  debugMessage(String("epd: power on in mono with rotation: ") + DISPLAY_ROTATION,1);
 
   // Initialize environmental sensor
   if (!sensorInit())
@@ -126,26 +118,49 @@ void setup()
   wakeup_reason = esp_sleep_get_wakeup_cause();
   switch (wakeup_reason)
   {
+    case ESP_SLEEP_WAKEUP_TIMER : // do nothing
+    {
+      debugMessage("wakeup cause: timer",1);
+    }
+    break;
     case ESP_SLEEP_WAKEUP_EXT0 :
-    // case ESP_SLEEP_WAKEUP_EXT1 :
+    {
+      debugMessage("wakeup cause: RTC gpio pin",1);
+      // neopixels.setPixelColor(2,0,255,0);
+      // neopixels.show();
+      if (!sensorRead()) 
+      {
+        debugMessage("SCD40 returned no/bad data",1);
+        screenAlert("SCD40 no/bad data");
+        powerDisable(HARDWARE_ERROR_INTERVAL);
+      }
+      batteryReadVoltage();
+      screenQRCodeCO2(nameFirst, nameLast, qrCodeURL);
+    }
+    break;
+    case ESP_SLEEP_WAKEUP_EXT1 :
     {
       int gpioReason = log(esp_sleep_get_ext1_wakeup_status())/log(2);
-      debugMessage(String("Wakeup caused by signal from GPIO pin: ") + gpioReason,1);
+      debugMessage(String("wakeup cause: RTC gpio pin: ") + gpioReason,1);
       switch (gpioReason)
       {
-        case BUTTON_A : // screenName
+        case BUTTON_A:  // screenName
         {
           debugMessage("button press: A",1);
-          neopixels.setPixelColor(3,255,0,0);
-          neopixels.show();
+          // neopixels.clear();
+          // neopixels.show();
+          // neopixels.setPixelColor(3,255,0,0);
+          // neopixels.show();
           screenName(nameFirst,nameLast,nameEmail,0);
         }
         break;
-        case BUTTON_B : // screenCO2
-        { 
+        case BUTTON_B:  // screenCO2
+        {
           debugMessage("button press: B",1);
-          neopixels.setPixelColor(2,0,255,0);
-          neopixels.show();
+          // neopixels.clear();
+          // neopixels.show();
+          // neopixels.setPixelColor(2,0,255,0);
+          // neopixels.show();
           if (!sensorRead()) 
           {
             debugMessage("SCD40 returned no/bad data",1);
@@ -160,49 +175,53 @@ void setup()
             sampleCounter = 0;
         }
         break;
-        case BUTTON_C : // screenQRCode
+        case BUTTON_C: // screenQRCode
         {
           debugMessage("button press: C",1);
-          neopixels.clear();
-          neopixels.show();
-          neopixels.setPixelColor(1,0,0,255);
-          neopixels.show();
-          screenQRCode();
+          // neopixels.clear();
+          // neopixels.show();
+          // neopixels.setPixelColor(1,0,0,255);
+          // neopixels.show();
+          screenQRCode(nameFirst, nameLast, qrCodeURL);
         }
         break;
-        case BUTTON_D : // screenThreeThings
+        case BUTTON_D: // screenThreeThings
         {
           debugMessage("button press: D",1);
-          neopixels.setPixelColor(0,255,255,255);
-          neopixels.show();
+          // neopixels.clear();
+          // neopixels.show();
+          // neopixels.setPixelColor(0,255,255,255);
+          // neopixels.show();
           screenThreeThings();
         }
         break;
       }
     }
     break;
-    // case ESP_SLEEP_WAKEUP_TIMER : // always return to screenMain()
-    // {
-    //   debugMessage("Wakeup caused by timer");
-    // }
-    // break;
     case ESP_SLEEP_WAKEUP_TOUCHPAD : 
     {
-      debugMessage("Wakeup caused by touchpad",1);
+      debugMessage("wakup cause: touchpad",1);
     }  
     break;
     case ESP_SLEEP_WAKEUP_ULP : 
     {
-      debugMessage("Wakeup caused by ULP program",1);
+      debugMessage("wakeup cause: program",1);
     }  
     break; 
     default :
     {
       // likely caused by reset after firmware load
-      neopixels.setPixelColor(3,255,0,0);
-      neopixels.show();
-      debugMessage(String("Wakeup caused by ") + wakeup_reason,1);
-      screenName(nameFirst,nameLast,nameEmail,0);
+      debugMessage(String("Wakeup likely cause: first boot after firmware flash, reason: ") + wakeup_reason,1);
+      // neopixels.setPixelColor(3,255,0,0);
+      // neopixels.show();
+      if (!sensorRead()) 
+      {
+        debugMessage("SCD40 returned no/bad data",1);
+        screenAlert("SCD40 no/bad data");
+        powerDisable(HARDWARE_ERROR_INTERVAL);
+      }
+      batteryReadVoltage();
+      screenQRCodeCO2(nameFirst, nameLast, qrCodeURL);
     }
   }
   // deep sleep the MagTag
@@ -246,7 +265,6 @@ void screenName(String firstName, String lastName, String email, bool invert)
   display.setCursor(xMargins,display.height()*7/8);
   display.setFont(&FreeSans12pt7b);
   display.print(email);
-
   display.display();
   debugMessage("screenName end",1);
 }
@@ -258,7 +276,6 @@ void screenCO2()
   display.clearBuffer();
   display.setTextColor(EPD_BLACK);
   
-  // screen helper routines
   // draws battery in the lower right corner. -3 in first parameter accounts for battery nub
   screenHelperBatteryStatus((display.width()-xMargins-batteryBarWidth-3),(display.height()-yBottomMargin-batteryBarHeight),batteryBarWidth,batteryBarHeight);
 
@@ -302,17 +319,66 @@ void screenCO2()
   debugMessage("screenCO2 end",1);
 }
 
-void screenQRCode()
-// Display QR code
+void screenQRCodeCO2(String firstName, String lastName, String url)
+// Displays first name, QRCode, and CO2 value in vertical orientation
 {
-  debugMessage("screenQRCode end",1);
-  screenAlert("QR Code not implemented");
+  debugMessage("screenQRCodeCO2 start",1);
+  display.clearBuffer();
+  display.setTextColor(EPD_BLACK);
+  // name
+  display.setFont(&FreeSans24pt7b);
+  display.setCursor(xMargins,48);
+  display.print(firstName);
+  display.setFont(&FreeSans12pt7b);
+  display.setCursor(xMargins,72);
+  display.print(lastName);
+  // QR code
+  screenHelperQRCode(12,98,url);
+  // CO2 values
+  int co2range = ((sensorData.ambientCO2[sampleCounter] - 400) / 400);
+  co2range = constrain(co2range,0,4); // filter CO2 levels above 2400
+
+  //main line
+  display.setFont(&FreeSans12pt7b);
+  display.setCursor(xMargins, 240);
+  display.print("CO");
+  display.setCursor(xMargins+50,240);
+  display.print(": " + String(co2Labels[co2range]));
+  display.setFont(&FreeSans9pt7b);
+  display.setCursor(xMargins+35,(240+10));
+  display.print("2");
+  // value line
+  display.setFont();
+  display.setCursor((xMargins+88),(240+7));
+  display.print("(" + String(sensorData.ambientCO2[sampleCounter]) + ")");
+
+  // draw battery in the lower right corner. -3 in first parameter accounts for battery nub
+  screenHelperBatteryStatus((display.width()-xMargins-batteryBarWidth-3),(display.height()-yBottomMargin-batteryBarHeight),batteryBarWidth,batteryBarHeight);
+  display.display();
+  debugMessage("screenQRCodeCO2 end",1);
+}
+
+void screenQRCode(String firstName, String lastName, String url)
+// Display name and a QR code for more information
+{
+  debugMessage("screenQRCode start",1);
+  display.clearBuffer();
+  display.setTextColor(EPD_BLACK);
+  display.setFont(&FreeSerif48pt7b);
+  display.setCursor(xMargins,display.height()/2);
+  display.print(firstName);
+  display.setFont(&FreeSerif24pt7b);
+  display.setCursor(xMargins,display.height()*7/8);
+  display.print(lastName);
+  screenHelperQRCode(display.width()/2+30,yTopMargin+10,url);
+  display.display();
   debugMessage("screenQRCode end",1);
 }
 
 void screenThreeThings()
 // Display three things about the badge owner
 {
+  debugMessage("screenThreeThings start",1);
   display.clearBuffer();
   display.setTextColor(EPD_BLACK);
   display.setFont(&FreeSans18pt7b);
@@ -333,6 +399,7 @@ void screenHelperBatteryStatus(int initialX, int initialY, int barWidth, int bar
   // IMPROVEMENT : Screen dimension boundary checks for function parameters
   if (hardwareData.batteryVoltage>0) 
   {
+    debugMessage(String("batteryStatus drawn at: ") + initialX + "," + initialY,2);
     // battery nub; width = 3pix, height = 60% of barHeight
     display.fillRect((initialX+barWidth),(initialY+(int(barHeight/5))),3,(int(barHeight*3/5)),EPD_BLACK);
     // battery border
@@ -344,6 +411,7 @@ void screenHelperBatteryStatus(int initialX, int initialY, int barWidth, int bar
 }
 
 void screenHelperSparkLines(int initialX, int initialY, int xWidth, int yHeight)
+// helper function for screenXXX() routines that draws a sparkline
 {
   // TEST ONLY: load test CO2 values
   // testSparkLineValues(SAMPLE_SIZE);
@@ -392,7 +460,39 @@ void screenHelperSparkLines(int initialX, int initialY, int xWidth, int yHeight)
     debugMessage("sparkline drawn to screen",1);
 }
 
-void batteryReadVoltage() 
+void screenHelperQRCode(int initialX, int initialY, String url)
+{
+  QRCode qrcode;
+  
+  uint8_t qrcodeData[qrcode_getBufferSize(qrCodeVersion)];
+  qrcode_initText(&qrcode, qrcodeData, qrCodeVersion, ECC_LOW, url.c_str());
+
+  debugMessage(String("QRCode size is: ")+ qrcode.size + " pixels",2);
+  for (uint8_t y = 0; y < qrcode.size; y++) 
+  {
+    for (uint8_t x = 0; x < qrcode.size; x++) 
+    {
+      //If pixel is on, we draw a ps x ps black square
+      if(qrcode_getModule(&qrcode, x, y))
+      {
+        for(int xi = x*qrCodeScaling; xi < x*qrCodeScaling + qrCodeScaling; xi++)
+        {
+          for(int yi= y*qrCodeScaling; yi < y*qrCodeScaling + qrCodeScaling; yi++)
+        // for(int xi = x*qrCodeScaling + 2; xi < x*qrCodeScaling + qrCodeScaling + 2; xi++)
+        // {
+        //   for(int yi= y*qrCodeScaling + 2; yi < y*qrCodeScaling + qrCodeScaling + 2; yi++)
+          {
+            display.writePixel(xi+initialX, yi+initialY, EPD_BLACK);
+          }
+        }
+      }
+    }
+  }
+  debugMessage("QRCode drawn to screen",1);
+}
+
+void batteryReadVoltage()
+// stores battery information in global hardware data structure
 {
   // check to see if i2C monitor is available
   if (lc.begin())
@@ -405,7 +505,9 @@ void batteryReadVoltage()
   }
 }
 
-bool sensorInit() {
+bool sensorInit()
+// initializes SCD40 environment sensor 
+{
   char errorMessage[256];
 
   #if defined(ARDUINO_ADAFRUIT_QTPY_ESP32S2) || defined(ARDUINO_ADAFRUIT_QTPY_ESP32S3_NOPSRAM) || defined(ARDUINO_ADAFRUIT_QTPY_ESP32S3) || defined(ARDUINO_ADAFRUIT_QTPY_ESP32_PICO)
@@ -464,39 +566,41 @@ bool sensorRead()
   return true;
 }
 
-void powerNeoPixelEnable()
-{
-  // enable board Neopixel
-  pinMode(NEOPIXEL_POWER, OUTPUT);
-  digitalWrite(NEOPIXEL_POWER, LOW); // on
+// void powerNeoPixelEnable()
+// enables MagTag neopixels
+// {
+//   // enable board Neopixel
+//   pinMode(NEOPIXEL_POWER, OUTPUT);
+//   digitalWrite(NEOPIXEL_POWER, LOW); // on
 
-  // enable MagTag neopixels
-  neopixels.begin();
-  neopixels.setBrightness(neoPixelBrightness);
-  neopixels.show(); // Initialize all pixels to off
-  debugMessage("power: neopixels on",1);
-  #ifdef DEBUG
-    if (DEBUG == 2) neoPixelTest();
-  #endif
-}
+//   // enable MagTag neopixels
+//   neopixels.begin();
+//   neopixels.setBrightness(neoPixelBrightness);
+//   neopixels.show(); // Initialize all pixels to off
+//   debugMessage("power: neopixels on",1);
+//   #ifdef DEBUG
+//     if (DEBUG == 2) neoPixelTest();
+//   #endif
+// }
 
-void neoPixelTest()
-{
-  // hard coded for MagTag
-  debugMessage("neoPixelTest begin",1);
-  for (int i=0;i<neoPixelCount;i++)
-  {
-      neopixels.clear();
-      neopixels.show();
-      neopixels.setPixelColor(i,255,0,0);
-      neopixels.show();
-      // delay is ok as non-blocking
-      delay(2000);
-  }
-  neopixels.clear();
-  neopixels.show();
-  debugMessage("neoPixelTest begin",1);
-}
+// void neoPixelTest()
+// tests MagTag neopixels by lighting them in sequential order
+// {
+//   // hard coded for MagTag
+//   debugMessage("neoPixelTest begin",1);
+//   for (int i=0;i<neoPixelCount;i++)
+//   {
+//       neopixels.clear();
+//       neopixels.show();
+//       neopixels.setPixelColor(i,255,0,0);
+//       neopixels.show();
+//       // delay is ok as non-blocking
+//       delay(2000);
+//   }
+//   neopixels.clear();
+//   neopixels.show();
+//   debugMessage("neoPixelTest begin",1);
+// }
 
 void powerDisable(int deepSleepTime)
 // Powers down hardware activated via w() then deep sleep MCU
@@ -521,27 +625,15 @@ void powerDisable(int deepSleepTime)
   debugMessage("power off: SCD40",1);
 
   //power down neopixels
-  pinMode(NEOPIXEL_POWER, OUTPUT);
-  digitalWrite(NEOPIXEL_POWER, HIGH); // off
-  debugMessage("power off: neopixels",1);
-
-  // rtc_gpio_pulldown_en(GPIO_NUM_15);
-  // rtc_gpio_pullup_dis(GPIO_NUM_15);
-
-  // rtc_gpio_pulldown_en(GPIO_NUM_14);
-  // rtc_gpio_pullup_dis(GPIO_NUM_14);
-
-  // rtc_gpio_pulldown_en(GPIO_NUM_12);
-  // rtc_gpio_pullup_dis(GPIO_NUM_12);
-
-  // rtc_gpio_pulldown_en(GPIO_NUM_11);
-  // rtc_gpio_pullup_dis(GPIO_NUM_11);
-
-  // Using external trigger ext0 to support one button interupt
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_15,0);
+  // pinMode(NEOPIXEL_POWER, OUTPUT);
+  // digitalWrite(NEOPIXEL_POWER, HIGH); // off
+  // debugMessage("power off: neopixels",1);
 
   // Using external trigger ext1 to support multiple button interupt
   // esp_sleep_enable_ext1_wakeup(BUTTON_PIN_BITMASK,ESP_EXT1_WAKEUP_ANY_HIGH);
+
+  // Using external trigger ext0 to support one button interupt
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_14,0);  //1 = High, 0 = Low
 
   // ESP32 timer based deep sleep
   esp_sleep_enable_timer_wakeup(deepSleepTime*1000000); // ESP microsecond modifier
