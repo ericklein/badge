@@ -8,7 +8,7 @@
 // Configuration Step 1: Set debug message output
 // comment out to turn off; 1 = summary, 2 = verbose
 
-#define DEBUG 2
+// #define DEBUG 1
 
 // Configuration Step 2: Set battery size if applicable
 // based on a settings curve in the LC709203F datasheet
@@ -38,10 +38,9 @@ const String qrCodeURL 	= "https://www.linkedin.com/in/ericklein";
 
 // Configuration variables that are less likely to require changes
 
-// e-paper display
-// Pin config
+// e-paper
 
-// Adafruit MagTag
+// Adafruit MagTag Pin config
 // #define EPD_CS      8 	// ECS, value comes from board definition package
 // #define EPD_DC      7   // D/C, value comes from board definition package
 #define SRAM_CS     -1  // SRCS, can set to -1 to not use a pin (uses ~10KB RAM)
@@ -51,7 +50,7 @@ const String qrCodeURL 	= "https://www.linkedin.com/in/ericklein";
 // Allow for adjustable screen as needed for physical packaging. 
 // 0 orients horizontally with neopixels on top
 // 1 orients vertically with flex cable as top
-#define DISPLAY_ROTATION 1
+const uint8_t displayRotation = 1; // rotation 1 = 0,0 is away from flex cable, right aligned with flex cable label
 
 // MagTag neopixel configuration
 // const int neoPixelCount = 4;
@@ -73,15 +72,15 @@ const String co2Labels[5]={"Good", "OK", "So-So", "Poor", "Bad"};
 // environment sensor sample timing
 #ifdef DEBUG
 	// number of times SCD40 is read, last read is the sample value
-	#define READS_PER_SAMPLE	1
+	const uint8_t sensorReadsPerSample =	1;
 	// # of uint_16 CO2 samples saved to nvStorage, so limit this
-  #define SAMPLE_SIZE				2
-	#define SLEEP_TIME				15
+  const uint8_t sensorSampleSize = 2;
+	const uint16_t hardwareSleepTime = 15;
 #else
-	#define READS_PER_SAMPLE	5
-  #define SAMPLE_SIZE 			10
-	#define SLEEP_TIME				60
+	const uint8_t sensorReadsPerSample =	5;
+  const uint8_t sensorSampleSize = 10;
+	const uint16_t hardwareSleepTime = 60;
 #endif
 
 // Sleep time if hardware error occurs in seconds
-#define HARDWARE_ERROR_INTERVAL 10
+const uint16_t hardwareErrorSleepTime = 15;

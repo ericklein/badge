@@ -13,7 +13,7 @@ typedef struct
 {
   float ambientTempF;
   float ambientHumidity;
-  uint16_t ambientCO2[SAMPLE_SIZE];
+  uint16_t ambientCO2[sensorSampleSize];
 } envData;
 envData sensorData;
 
@@ -79,11 +79,11 @@ const int batteryBarHeight = 10;
 
 void setup()
 {
-  hardwareData.batteryVoltage = 0;  // 0 = no battery attached
+  hardwareData.batteryVoltage = 0.0;  // 0 = no battery attached
   sampleCounter = 0;
-  for (int i=0; i<SAMPLE_SIZE;i++)
+  for (int loop=0; loop<sensorSampleSize;loop++)
   {
-    sensorData.ambientCO2[i] = 400;
+    sensorData.ambientCO2[loop] = 400;
   }
 
   #ifdef DEBUG
@@ -100,17 +100,18 @@ void setup()
   //display.begin(THINKINK_GRAYSCALE4);
   // debugMessage ("epd: power on in grayscale",1);
   display.begin(THINKINK_MONO);
-  display.setRotation(DISPLAY_ROTATION);
-  debugMessage(String("epd: power on in mono with rotation: ") + DISPLAY_ROTATION,1);
+  display.setRotation(displayRotation);
+  display.setTextWrap(false);
+  debugMessage(String("epd: power on in mono with rotation: ") + displayRotation,1);
 
   // Initialize environmental sensor
-  if (!sensorInit())
+  if (!sensorCO2Init())
   {
     debugMessage("Environment sensor failed to initialize",1);
-    screenAlert("No CO2 sensor?");
+    screenAlert("CO2 sensor?");
     // This error often occurs right after a firmware flash and reset.
     // Hardware deep sleep typically resolves it, so quickly cycle the hardware
-    powerDisable(HARDWARE_ERROR_INTERVAL);
+    powerDisable(hardwareErrorSleepTime);
   }
 
   // what woke the Magtag up?
@@ -118,21 +119,16 @@ void setup()
   wakeup_reason = esp_sleep_get_wakeup_cause();
   switch (wakeup_reason)
   {
-    case ESP_SLEEP_WAKEUP_TIMER : // do nothing
-    {
-      debugMessage("wakeup cause: timer",1);
-    }
-    break;
     case ESP_SLEEP_WAKEUP_EXT0 :
     {
       debugMessage("wakeup cause: RTC gpio pin",1);
       // neopixels.setPixelColor(2,0,255,0);
       // neopixels.show();
-      if (!sensorRead()) 
+      if (!sensorCO2Read()) 
       {
         debugMessage("SCD40 returned no/bad data",1);
-        screenAlert("SCD40 no/bad data");
-        powerDisable(HARDWARE_ERROR_INTERVAL);
+        screenAlert("SCD40 data?");
+        powerDisable(hardwareErrorSleepTime);
       }
       batteryReadVoltage();
       screenQRCodeCO2(nameFirst, nameLast, qrCodeURL);
@@ -161,18 +157,18 @@ void setup()
           // neopixels.show();
           // neopixels.setPixelColor(2,0,255,0);
           // neopixels.show();
-          if (!sensorRead()) 
+          if (!sensorCO2Read()) 
           {
             debugMessage("SCD40 returned no/bad data",1);
-            screenAlert("SCD40 no/bad data");
-            powerDisable(HARDWARE_ERROR_INTERVAL);
+            screenAlert("SCD40 data?");
+            powerDisable(hardwareErrorSleepTime);
           }
           batteryReadVoltage();
           screenCO2();
-          if (sampleCounter<SAMPLE_SIZE)
-            sampleCounter++;
-          else
-            sampleCounter = 0;
+          // if (sampleCounter<sensorSampleSize)
+          //   sampleCounter++;
+          // else
+          //   sampleCounter = 0;
         }
         break;
         case BUTTON_C: // screenQRCode
@@ -185,16 +181,16 @@ void setup()
           screenQRCode(nameFirst, nameLast, qrCodeURL);
         }
         break;
-        case BUTTON_D: // screenThreeThings
-        {
-          debugMessage("button press: D",1);
-          // neopixels.clear();
-          // neopixels.show();
-          // neopixels.setPixelColor(0,255,255,255);
-          // neopixels.show();
-          screenThreeThings();
-        }
-        break;
+        // case BUTTON_D: // screenThreeThings
+        // {
+        //   debugMessage("button press: D",1);
+        //   // neopixels.clear();
+        //   // neopixels.show();
+        //   // neopixels.setPixelColor(0,255,255,255);
+        //   // neopixels.show();
+        //   screenThreeThings();
+        // }
+        // break;
       }
     }
     break;
@@ -207,40 +203,57 @@ void setup()
     {
       debugMessage("wakeup cause: program",1);
     }  
-    break; 
+    break;
+    case ESP_SLEEP_WAKEUP_TIMER : // do nothing
+    {
+      debugMessage("wakeup cause: timer",1);
+    }
+    break;
     default :
     {
       // likely caused by reset after firmware load
       debugMessage(String("Wakeup likely cause: first boot after firmware flash, reason: ") + wakeup_reason,1);
       // neopixels.setPixelColor(3,255,0,0);
       // neopixels.show();
-      if (!sensorRead()) 
+      if (!sensorCO2Read()) 
       {
         debugMessage("SCD40 returned no/bad data",1);
-        screenAlert("SCD40 no/bad data");
-        powerDisable(HARDWARE_ERROR_INTERVAL);
+        screenAlert("SCD40 data?");
+        powerDisable(hardwareErrorSleepTime
+);
       }
       batteryReadVoltage();
       screenQRCodeCO2(nameFirst, nameLast, qrCodeURL);
     }
   }
   // deep sleep the MagTag
-  powerDisable(SLEEP_TIME);
+  powerDisable(hardwareSleepTime);
 } 
 
 void loop() {}
 
 void screenAlert(String messageText)
-// Display critical error message on screen
+// Display error message centered on screen
 {
+  debugMessage("screenAlert start",1);
+
+  int16_t x1, y1;
+  uint16_t width,height;
+
   display.clearBuffer();
   display.setTextColor(EPD_BLACK);
   display.setFont(&FreeSans12pt7b);
-  display.setCursor(40,(display.height()/2+6));
-  display.print(messageText);
+  display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &width, &height);
 
+  if (width >= display.width())
+  {
+    debugMessage(String("ERROR: screenAlert '") + messageText + "' is " + abs(display.width()-width) + " pixels too long", 1);
+  }
+  display.setCursor(display.width()/2-width/2,display.height()/2+height/2);
+  display.print(messageText);
   //update display
   display.display();
+  debugMessage("screenAlert end",1);
 }
 
 void screenName(String firstName, String lastName, String email, bool invert)
@@ -397,7 +410,7 @@ void screenHelperBatteryStatus(int initialX, int initialY, int barWidth, int bar
 // helper function for screenXXX() routines that draws battery charge %
 {
   // IMPROVEMENT : Screen dimension boundary checks for function parameters
-  if (hardwareData.batteryVoltage>0) 
+  if (hardwareData.batteryVoltage>0.0) 
   {
     debugMessage(String("batteryStatus drawn at: ") + initialX + "," + initialY,2);
     // battery nub; width = 3pix, height = 60% of barHeight
@@ -414,24 +427,24 @@ void screenHelperSparkLines(int initialX, int initialY, int xWidth, int yHeight)
 // helper function for screenXXX() routines that draws a sparkline
 {
   // TEST ONLY: load test CO2 values
-  // testSparkLineValues(SAMPLE_SIZE);
+  // testSparkLineValues(sensorSampleSize);
 
   uint16_t co2Min = sensorData.ambientCO2[0];
   uint16_t co2Max = sensorData.ambientCO2[0];
   // # of pixels between each samples x and y coordinates
   int xPixelStep, yPixelStep;
 
-  int sparkLineX[SAMPLE_SIZE], sparkLineY[SAMPLE_SIZE];
+  int sparkLineX[sensorSampleSize], sparkLineY[sensorSampleSize];
 
   // horizontal distance (pixels) between each displayed co2 value
-  xPixelStep = (xWidth / (SAMPLE_SIZE - 1));
+  xPixelStep = (xWidth / (sensorSampleSize - 1));
 
   // determine min/max of CO2 samples
-  // could use recursive function but SAMPLE_SIZE should always be relatively small
-  for(int i=0;i<SAMPLE_SIZE;i++)
+  // could use recursive function but sensorSampleSize should always be relatively small
+  for(int loop=0;loop<sensorSampleSize;loop++)
   {
-    if(sensorData.ambientCO2[i] > co2Max) co2Max = sensorData.ambientCO2[i];
-    if(sensorData.ambientCO2[i] < co2Min) co2Min = sensorData.ambientCO2[i];
+    if(sensorData.ambientCO2[loop] > co2Max) co2Max = sensorData.ambientCO2[loop];
+    if(sensorData.ambientCO2[loop] < co2Min) co2Min = sensorData.ambientCO2[loop];
   }
   debugMessage(String("Max CO2 in stored sample range is ") + co2Max +", min is " + co2Min,2);
 
@@ -444,18 +457,18 @@ void screenHelperSparkLines(int initialX, int initialY, int xWidth, int yHeight)
   // display.drawRect(initialX,initialY, xWidth,yHeight, EPD_BLACK);
 
   // determine sparkline x,y values
-  for(int i=0;i<SAMPLE_SIZE;i++)
+  for(int loop=0;loop<sensorSampleSize;loop++)
   {
-    sparkLineX[i] = (initialX + (i * xPixelStep));
-    sparkLineY[i] = ((initialY + yHeight) - (int)((sensorData.ambientCO2[i]-co2Min) / yPixelStep));
+    sparkLineX[loop] = (initialX + (loop * xPixelStep));
+    sparkLineY[loop] = ((initialY + yHeight) - (int)((sensorData.ambientCO2[loop]-co2Min) / yPixelStep));
 
     // draw/extend sparkline after first value is generated
-    if (i != 0)
-      display.drawLine(sparkLineX[i-1],sparkLineY[i-1],sparkLineX[i],sparkLineY[i],EPD_BLACK);  
+    if (loop != 0)
+      display.drawLine(sparkLineX[loop-1],sparkLineY[loop-1],sparkLineX[loop],sparkLineY[loop],EPD_BLACK);  
   }
-  for (int i=0;i<SAMPLE_SIZE;i++)
+  for (int loop=0;loop<sensorSampleSize;loop++)
   {
-    debugMessage(String("X,Y coordinates for CO2 sample ") + i + " is " + sparkLineX[i] + "," + sparkLineY[i],2);
+    debugMessage(String("X,Y coordinates for CO2 sample ") + loop + " is " + sparkLineX[loop] + "," + sparkLineY[loop],2);
   }
     debugMessage("sparkline drawn to screen",1);
 }
@@ -503,9 +516,11 @@ void batteryReadVoltage()
     hardwareData.batteryVoltage = lc.cellVoltage();
     debugMessage(String("Battery voltage: ") + hardwareData.batteryVoltage + "v, percent: " + hardwareData.batteryPercent + "%",1);
   }
+  else
+    debugMessage("Did not detect i2c battery monitor",1);
 }
 
-bool sensorInit()
+bool sensorCO2Init()
 // initializes SCD40 environment sensor 
 {
   char errorMessage[256];
@@ -537,16 +552,16 @@ bool sensorInit()
   }
 }
 
-bool sensorRead()
-// reads SCD40 READS_PER_SAMPLE times then stores last read
+bool sensorCO2Read()
+// reads SCD40 sensorReadsPerSample times then stores last read
 {
   char errorMessage[256];
 
-  screenAlert("Reading CO2 level");
-  for (int loop=1; loop<=READS_PER_SAMPLE; loop++)
-  {
-    // SCD40 datasheet suggests 5 second delay between SCD40 reads
-    delay(5000);
+  screenAlert("CO2 read");
+  for (int loop=1; loop<=sensorReadsPerSample; loop++)
+  { 
+    // SCD40 datasheet suggests 5 second delay before SCD40 read
+    delay(5000);  
     uint16_t error = envSensor.readMeasurement(sensorData.ambientCO2[sampleCounter], sensorData.ambientTempF, sensorData.ambientHumidity);
     // handle SCD40 errors
     if (error) {
@@ -561,7 +576,7 @@ bool sensorRead()
     }
     //convert C to F for temp
     sensorData.ambientTempF = (sensorData.ambientTempF * 1.8) + 32;
-    debugMessage(String("SCD40 read ") + loop + " of " + READS_PER_SAMPLE + " : " + sensorData.ambientTempF + "F, " + sensorData.ambientHumidity + "%, " + sensorData.ambientCO2[sampleCounter] + " ppm",1);
+    debugMessage(String("SCD40 read ") + loop + " of " + sensorReadsPerSample + " : " + sensorData.ambientTempF + "F, " + sensorData.ambientHumidity + "%, " + sensorData.ambientCO2[sampleCounter] + " ppm",1);
   }
   return true;
 }
