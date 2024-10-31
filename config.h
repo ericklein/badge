@@ -8,7 +8,7 @@
 // Configuration Step 1: Set debug message output
 // comment out to turn off; 1 = summary, 2 = verbose
 
-#define DEBUG 2
+// #define DEBUG 2
 
 // Configuration Step 2: Set battery size if applicable
 // based on a settings curve in the LC709203F datasheet
