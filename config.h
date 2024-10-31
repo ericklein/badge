@@ -8,7 +8,7 @@
 // Configuration Step 1: Set debug message output
 // comment out to turn off; 1 = summary, 2 = verbose
 
-// #define DEBUG 1
+// #define DEBUG 2
 
 // Configuration Step 2: Set battery size if applicable
 // based on a settings curve in the LC709203F datasheet
@@ -28,8 +28,8 @@ const String nameLast		= "Klein";
 const String nameEmail	= "eric@lemnos.vc";
 
 // Configuration Step 4: QR Code information for screen display
-const int qrCodeScaling = 3; 	// QRCode square size = Round ((smallest screen dimension)-((xmargin)*(ymargin)/33[LOW_ECC])
-const int qrCodeVersion = 4;
+const uint8_t qrCodeScaling = 3; 	// QRCode square size = Round ((smallest screen dimension)-((xmargin)*(ymargin)/33[LOW_ECC])
+const uint8_t qrCodeVersion = 4;
 const String qrCodeURL 	= "https://www.linkedin.com/in/ericklein";
 
 // Configuration Step 5: Set site altitude in meters for SCD40 calibration
@@ -38,9 +38,8 @@ const String qrCodeURL 	= "https://www.linkedin.com/in/ericklein";
 
 // Configuration variables that are less likely to require changes
 
-// e-paper
-
-// Adafruit MagTag Pin config
+// display
+// Adafruit MagTag pin config
 // #define EPD_CS      8 	// ECS, value comes from board definition package
 // #define EPD_DC      7   // D/C, value comes from board definition package
 #define SRAM_CS     -1  // SRCS, can set to -1 to not use a pin (uses ~10KB RAM)
@@ -51,36 +50,52 @@ const String qrCodeURL 	= "https://www.linkedin.com/in/ericklein";
 // 0 orients horizontally with neopixels on top
 // 1 orients vertically with flex cable as top
 const uint8_t displayRotation = 1; // rotation 1 = 0,0 is away from flex cable, right aligned with flex cable label
+const uint8_t screenCount = 2;
+
+// screen layout assists
+const uint8_t xMargins = 5;
+const uint8_t yTopMargin = 5;
+const uint8_t yBottomMargin = 2;
+const uint8_t batteryBarWidth = 28;
+const uint8_t batteryBarHeight = 10;
 
 // MagTag neopixel configuration
-// const int neoPixelCount = 4;
-// const int neoPixelBrightness = 5;
+const uint8_t neoPixelCount = 4;
+const uint8_t neoPixelBrightness = 30;
 
-// Button handling for ESP32 deep sleep
-// MagTag BUTTON_A = 15, BUTTON_B = 14, BUTTON_C = 12, BUTTON_D = 11 (all RTC pins)
+// Buttons
+const uint8_t buttonD1Pin = 11;
+const uint16_t buttonDebounceDelay = 50; // time in milliseconds to debounce button
 
-// ext1 wakeup (multiple buttons via bitmask)
-//#define BUTTON_PIN_BITMASK 0xD800 // All buttons; 2^15+2^14+2^12+2^11 in hex
-// #define BUTTON_PIN_BITMASK 0xC000 // Buttons A,B; 2^15+2^14 in hex
-// #define BUTTON_PIN_BITMASK 0x9800 // Buttons A,C,D; 2^15+2^12+2^11 in hex
-// #define BUTTON_PIN_BITMASK 0x8800 // Buttons A,D; 2^15+2^11 in hex
-// #define BUTTON_PIN_BITMASK 0x1800 // Buttons C,D; 2^12+2^11 in hex
-// #define BUTTON_PIN_BITMASK 0x8000 // Button A; 2^15 in hex
-
-// CO2 configuration
-const String co2Labels[5]={"Good", "OK", "So-So", "Poor", "Bad"};
-// environment sensor sample timing
+// CO2 sensor
 #ifdef DEBUG
-	// number of times SCD40 is read, last read is the sample value
-	const uint8_t sensorReadsPerSample =	1;
-	// # of uint_16 CO2 samples saved to nvStorage, so limit this
-  const uint8_t sensorSampleSize = 2;
-	const uint16_t hardwareSleepTime = 15;
+	// time between samples in seconds
+  const uint16_t sensorSampleInterval = 30;
 #else
-	const uint8_t sensorReadsPerSample =	5;
-  const uint8_t sensorSampleSize = 10;
-	const uint16_t hardwareSleepTime = 60;
+  const uint16_t sensorSampleInterval = 60;
 #endif
 
+// Define CO2 values that constitute Red (Alarm) & Yellow (Warning) values
+// US NIOSH (1987) recommendations:
+// 250-350 ppm - normal outdoor ambient concentrations
+// 600 ppm - minimal air quality complaints
+// 600-1,000 ppm - less clearly interpreted
+// 1,000 ppm - indicates inadequate ventilation; complaints such as headaches, fatigue, and eye and throat irritation will be more widespread; 1,000 ppm should be used as an upper limit for indoor levels
+
+const uint16_t co2Warning = 800; // Associated with "OK"
+const uint16_t co2Alarm = 1000; // Associated with "Poor"
+
+const String co2Labels[3]={"Good", "So-So", "Poor"};
+// Subjective color scheme using 16 bit ('565') RGB colors a la ST77XX display
+const uint16_t co2Color[3] = {
+    0x07E0,   // GREEN = "Good"
+    0xFFE0,   // YELLOW = "So-So"
+    0xF800    // RED = "Poor"
+  };
+
+const uint16_t sensorCO2Min =      400;
+const uint16_t sensorCO2Max =      2000;
+const uint16_t sensorTempCOffset = 0; // in C
+
 // Sleep time if hardware error occurs in seconds
-const uint16_t hardwareErrorSleepTime = 15;
+const uint16_t hardwareErrorSleepTime = 10;
