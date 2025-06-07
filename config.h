@@ -8,7 +8,7 @@
 // Configuration Step 1: Set debug message output
 // comment out to turn off; 1 = summary, 2 = verbose
 
-// #define DEBUG 2
+#define DEBUG 2
 
 // Configuration Step 2: Set battery size if applicable
 // based on a settings curve in the LC709203F datasheet
@@ -49,8 +49,9 @@ const String qrCodeURL 	= "https://www.linkedin.com/in/ericklein";
 // Allow for adjustable screen as needed for physical packaging. 
 // 0 orients horizontally with neopixels on top
 // 1 orients vertically with flex cable as top
-const uint8_t displayRotation = 1; // rotation 1 = 0,0 is away from flex cable, right aligned with flex cable label
-const uint8_t screenCount = 2;
+const uint8_t screenRotation = 1; // rotation 1 = 0,0 is away from flex cable, right aligned with flex cable label
+const uint8_t screenCount = 4;
+const uint8_t screenSwapInterval = 30; // in seconds
 
 // screen layout assists
 const uint8_t xMargins = 5;
@@ -72,30 +73,19 @@ const uint16_t buttonDebounceDelay = 50; // time in milliseconds to debounce but
 	// time between samples in seconds
   const uint16_t sensorSampleInterval = 30;
 #else
-  const uint16_t sensorSampleInterval = 60;
+  const uint16_t sensorSampleInterval = 180;
 #endif
-
-// Define CO2 values that constitute Red (Alarm) & Yellow (Warning) values
-// US NIOSH (1987) recommendations:
-// 250-350 ppm - normal outdoor ambient concentrations
-// 600 ppm - minimal air quality complaints
-// 600-1,000 ppm - less clearly interpreted
-// 1,000 ppm - indicates inadequate ventilation; complaints such as headaches, fatigue, and eye and throat irritation will be more widespread; 1,000 ppm should be used as an upper limit for indoor levels
 
 const uint16_t co2Warning = 800; // Associated with "OK"
 const uint16_t co2Alarm = 1000; // Associated with "Poor"
 
 const String co2Labels[3]={"Good", "So-So", "Poor"};
-// Subjective color scheme using 16 bit ('565') RGB colors a la ST77XX display
-const uint16_t co2Color[3] = {
-    0x07E0,   // GREEN = "Good"
-    0xFFE0,   // YELLOW = "So-So"
-    0xF800    // RED = "Poor"
-  };
 
 const uint16_t sensorCO2Min =      400;
 const uint16_t sensorCO2Max =      2000;
 const uint16_t sensorTempCOffset = 0; // in C
 
-// Sleep time if hardware error occurs in seconds
-const uint16_t hardwareErrorSleepTime = 10;
+// Sleep timers
+const uint8_t hardwareErrorSleepTime = 10; // in seconds
+const uint16_t sleepInterval = 120; // in seconds
+const uint16_t sleepTime = 300; // in seconds
