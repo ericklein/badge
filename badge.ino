@@ -30,9 +30,9 @@ Adafruit_LC709203F lc;
 
 // button support
 #include <ezButton.h>
-ezButton buttonOne(buttonD1Pin,INPUT_PULLDOWN);
+ezButton buttonOne(buttonD1Pin);
 
-// eink support
+// e-ink support
 #include <Adafruit_ThinkInk.h>
 // 2.96" greyscale display with 296x128 pixels
 // colors are EPD_WHITE, EPD_BLACK, EPD_GRAY, EPD_LIGHT, EPD_DARK
@@ -45,8 +45,8 @@ ThinkInk_290_Grayscale4_T5 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY)
 
 #include "Fonts/FreeSerif24pt7b.h"  // screenName
 #include "Fonts/FreeSerif48pt7b.h"  // screenName
-#include "Fonts/FreeSerif18pt7b.h"  // screenQRCodeCO2
-#include "Fonts/FreeSerif12pt7b.h"  // screenQRCodeCO2
+#include "Fonts/FreeSerif18pt7b.h"  // screenMain
+#include "Fonts/FreeSerif12pt7b.h"  // screenMain
 
 #include "Fonts/meteocons24pt7b.h"  //screenCO2
 
@@ -75,8 +75,10 @@ hdweData hardwareData;
 // Utility class used to streamline accumulating sensor values
 Measure totalCO2, totalTemperatureF, totalHumidity;
 
-long timeLastSample  = -(sensorSampleInterval*1000);  // set to trigger sample on first iteration of loop()
-uint8_t screenCurrent = 0;
+// int32_t timeLastSensorSample  = -(sensorSampleInterval*1000);  // negative value triggers sensor sample on first iteration of loop()
+uint32_t timeLastSensorSample;
+uint32_t timeLastScreenSwap;
+uint8_t screenCurrent = 0; // tracks which screen is displayed
 
 void setup()
 {
@@ -91,13 +93,14 @@ void setup()
 
   powerNeoPixelEnable();
 
-  // there is no way to query screen for status
+  // Initialize e-ink screen
+  // there is no way to query e-ink screen to check for successful initialization
   //display.begin(THINKINK_GRAYSCALE4);
-  // debugMessage ("epd: power on in grayscale",1);
   display.begin(THINKINK_MONO);
-  display.setRotation(displayRotation);
+  display.setRotation(screenRotation);
   display.setTextWrap(false);
-  debugMessage(String("epd: power on in mono with rotation: ") + displayRotation,1);
+  // debugMessage (String("epd: enabled in grayscale with rotation") + screenRotation,1);
+  debugMessage(String("epd: enabled in mono with rotation: ") + screenRotation,1);
 
   // Initialize environmental sensor
   if (!sensorCO2Init())
@@ -105,72 +108,74 @@ void setup()
     debugMessage("Environment sensor failed to initialize",1);
     screenAlert("CO2 sensor?");
     // This error often occurs right after a firmware flash and reset.
-    // Hardware deep sleep typically resolves it, so quickly cycle the hardware
+    // Hardware deep sleep typically resolves it
     powerDisable(hardwareErrorSleepTime);
   }
 
-  buttonOne.setDebounceTime(buttonDebounceDelay); 
+  buttonOne.setDebounceTime(buttonDebounceDelay);
+
+  // first tme screen draw
+  if (!sensorCO2Read())
+  {
+    screenAlert("CO2 read fail");
+  }
+  timeLastSensorSample = millis();
+  screenUpdate();
+  timeLastScreenSwap = millis();
 } 
 
 void loop()
 {
-  // update current timer value
-  unsigned long timeCurrent = millis();
-
   buttonOne.loop();
-  // check if buttons were pressed
   if (buttonOne.isReleased())
   {
     ((screenCurrent + 1) >= screenCount) ? screenCurrent = 0 : screenCurrent ++;
     debugMessage(String("button 1 press, switch to screen ") + screenCurrent,1);
-    screenUpdate(true);
+    screenUpdate();
   }
 
-  // is it time to read the sensor?
-  if((timeCurrent - timeLastSample) >= (sensorSampleInterval * 1000)) // converting sensorSampleInterval into milliseconds
+  // is it time to update the sensor values?
+  if((millis() - timeLastSensorSample) >= (sensorSampleInterval * 1000)) // converting sensorSampleInterval into milliseconds
   {
     if (!sensorCO2Read())
     {
       screenAlert("CO2 read fail");
     }
-    else
-    {
-      // update neopixels
-      neoPixelCO2();
-
-      // Received new data so update aggregate information
-      totalCO2.include(sensorData.ambientCO2);
-      totalTemperatureF.include(sensorData.ambientTemperatureF);
-      totalHumidity.include(sensorData.ambientHumidity);// refresh current screen based on new sensor reading
-      // Update the TFT display with new readings on the current screen (hence false)
-      screenUpdate(true);
-    }
     // Save current timestamp to restart sample delay interval
-    timeLastSample = timeCurrent;
+    timeLastSensorSample = millis();
   }
+
+  // is it time to swap screens?
+  if((millis() - timeLastScreenSwap) >= (screenSwapInterval * 1000)) // converting screenSwapInterval into milliseconds
+  {
+    ((screenCurrent + 1) >= screenCount) ? screenCurrent = 0 : screenCurrent ++;
+    debugMessage(String("screen swap timer triggered, switch to screen ") + screenCurrent,1);
+    screenUpdate();
+    timeLastScreenSwap = millis();
+  }
+
+  // is it time to go to sleep?
 }
 
-void screenUpdate(bool firstTime) 
+void screenUpdate() 
 {
+  neoPixelCO2();
   switch(screenCurrent) {
     case 0:
-      screenQRCodeCO2(nameFirst, nameLast, qrCodeURL);
+      screenMain(nameFirst, nameLast, qrCodeURL);
       break;
     case 1:
       screenThreeThings();
       break;
-    // case 2:
-    //   screenAggregateData();
-    //   break;
-    // case 3:
-    //   screenColor();
-    //   break;
-    // case 4:
-    //   screenGraph();
-    //   break;
+    case 2:
+      screenCO2();
+      break;
+    case 3:
+      screenSensors();
+      break;
     default:
       // This shouldn't happen, but if it does...
-      screenQRCodeCO2(nameFirst, nameLast, qrCodeURL);
+      screenMain(nameFirst, nameLast, qrCodeURL);
       debugMessage("bad screen ID",1);
       break;
   }
@@ -200,86 +205,10 @@ void screenAlert(String messageText)
   debugMessage("screenAlert end",1);
 }
 
-void screenName(String firstName, String lastName, String email, bool invert)
-// Display badge owner's name
-{
-  // ADD string validation
-  debugMessage ("screenName start",1);
-
-  display.clearBuffer();
-  display.setTextColor(EPD_BLACK);
-  if (invert)
-  {
-    display.fillRect(0,0,display.width(),display.height(),EPD_BLACK);
-    display.setTextColor(EPD_WHITE);
-  }
-  display.setFont(&FreeSerif48pt7b);
-  display.setCursor(xMargins,display.height()*5/8);
-  display.print(firstName);
-  display.setFont(&FreeSerif24pt7b);
-  display.print(" ");
-  display.print(lastName);
-  display.setCursor(xMargins,display.height()*7/8);
-  display.setFont(&FreeSans12pt7b);
-  display.print(email);
-  display.display();
-  debugMessage("screenName end",1);
-}
-
-// void screenCO2()
-// // Display ambient temp, humidity, and CO2 level
-// {
-//   debugMessage("screenCO2 start",1);
-//   display.clearBuffer();
-//   display.setTextColor(EPD_BLACK);
-  
-//   // draws battery in the lower right corner. -3 in first parameter accounts for battery nub
-//   screenHelperBatteryStatus((display.width()-xMargins-batteryBarWidth-3),(display.height()-yBottomMargin-batteryBarHeight),batteryBarWidth,batteryBarHeight);
-
-//   // display sparkline
-//   screenHelperSparkLines(xMargins,ySparkline,((display.width()/2) - (2 * xMargins)),sparklineHeight);
-
-//   // CO2 level
-//   // calculate CO2 value range in 400ppm bands
-//   int co2range = ((sensorData.ambientCO2[sampleCounter] - 400) / 400);
-//   co2range = constrain(co2range,0,4); // filter CO2 levels above 2400
-
-//   // main line
-//   display.setFont(&FreeSans12pt7b);
-//   display.setCursor(xMargins, yCO2);
-//   display.print("CO");
-//   display.setCursor(xMargins+50,yCO2);
-//   display.print(": " + String(co2Labels[co2range]));
-//   display.setFont(&FreeSans9pt7b);
-//   display.setCursor(xMargins+35,(yCO2+10));
-//   display.print("2");
-//   // value line
-//   display.setFont();
-//   display.setCursor((xMargins+88),(yCO2+7));
-//   display.print("(" + String(sensorData.ambientCO2[sampleCounter]) + ")");
-
-//   // indoor tempF
-//   display.setFont(&FreeSans24pt7b);
-//   display.setCursor(xMidMargin,yTempF);
-//   display.print(String((int)(sensorData.ambientTemperatureF + .5)));
-//   display.setFont(&meteocons24pt7b);
-//   display.print("+");
-
-//   // indoor humidity
-//   display.setFont(&FreeSans24pt7b);
-//   display.setCursor(xMidMargin, yHumidity);
-//   display.print(String((int)(sensorData.ambientHumidity + 0.5)));
-//   // original icon ratio was 5:7?
-//   display.drawBitmap(xMidMargin+60,yHumidity-21,epd_bitmap_humidity_icon_sm4,20,28,EPD_BLACK);
-
-//   display.display();
-//   debugMessage("screenCO2 end",1);
-// }
-
-void screenQRCodeCO2(String firstName, String lastName, String url)
+void screenMain(String firstName, String lastName, String url)
 // Displays first name, QRCode, and CO2 value in vertical orientation
 {
-  debugMessage("screenQRCodeCO2 start",1);
+  debugMessage("screenMain start",1);
 
   // screen layout assists
   const int xMidMargin = ((display.width()/2) + xMargins);
@@ -288,9 +217,6 @@ void screenQRCodeCO2(String firstName, String lastName, String url)
   const int yCO2 = 40;
 
   display.clearBuffer();
-
-  // draws battery in the lower right corner. -3 in first parameter accounts for battery nub
-  screenHelperBatteryStatus((display.width()-xMargins-batteryBarWidth-3),(display.height()-yBottomMargin-batteryBarHeight),batteryBarWidth,batteryBarHeight);
 
   display.setTextColor(EPD_BLACK);
   // name
@@ -320,25 +246,59 @@ void screenQRCodeCO2(String firstName, String lastName, String url)
   // draw battery in the lower right corner. -3 in first parameter accounts for battery nub
   screenHelperBatteryStatus((display.width()-xMargins-batteryBarWidth-3),(display.height()-yBottomMargin-batteryBarHeight),batteryBarWidth,batteryBarHeight);
   display.display();
-  debugMessage("screenQRCodeCO2 end",1);
+  debugMessage("screenMain end",1);
 }
 
-// void screenQRCode(String firstName, String lastName, String url)
-// // Display name and a QR code for more information
-// {
-//   debugMessage("screenQRCode start",1);
-//   display.clearBuffer();
-//   display.setTextColor(EPD_BLACK);
-//   display.setFont(&FreeSerif48pt7b);
-//   display.setCursor(xMargins,display.height()/2);
-//   display.print(firstName);
-//   display.setFont(&FreeSerif24pt7b);
-//   display.setCursor(xMargins,display.height()*7/8);
-//   display.print(lastName);
-//   screenHelperQRCode(display.width()/2+30,yTopMargin+10,url);
-//   display.display();
-//   debugMessage("screenQRCode end",1);
-// }
+void screenCO2()
+// Display ambient temp, humidity, and CO2 level
+{
+  debugMessage("screenCO2 start",1);
+  screenAlert("CO2 detail");
+  // display.clearBuffer();
+  // display.setTextColor(EPD_BLACK);
+  
+  // // draws battery in the lower right corner. -3 in first parameter accounts for battery nub
+  // screenHelperBatteryStatus((display.width()-xMargins-batteryBarWidth-3),(display.height()-yBottomMargin-batteryBarHeight),batteryBarWidth,batteryBarHeight);
+
+  // // display sparkline
+  // screenHelperSparkLines(xMargins,ySparkline,((display.width()/2) - (2 * xMargins)),sparklineHeight);
+
+  // // CO2 level
+  // // calculate CO2 value range in 400ppm bands
+  // int co2range = ((sensorData.ambientCO2[sampleCounter] - 400) / 400);
+  // co2range = constrain(co2range,0,4); // filter CO2 levels above 2400
+
+  // // main line
+  // display.setFont(&FreeSans12pt7b);
+  // display.setCursor(xMargins, yCO2);
+  // display.print("CO");
+  // display.setCursor(xMargins+50,yCO2);
+  // display.print(": " + String(co2Labels[co2range]));
+  // display.setFont(&FreeSans9pt7b);
+  // display.setCursor(xMargins+35,(yCO2+10));
+  // display.print("2");
+  // // value line
+  // display.setFont();
+  // display.setCursor((xMargins+88),(yCO2+7));
+  // display.print("(" + String(sensorData.ambientCO2[sampleCounter]) + ")");
+
+  // // indoor tempF
+  // display.setFont(&FreeSans24pt7b);
+  // display.setCursor(xMidMargin,yTempF);
+  // display.print(String((int)(sensorData.ambientTemperatureF + .5)));
+  // display.setFont(&meteocons24pt7b);
+  // display.print("+");
+
+  // // indoor humidity
+  // display.setFont(&FreeSans24pt7b);
+  // display.setCursor(xMidMargin, yHumidity);
+  // display.print(String((int)(sensorData.ambientHumidity + 0.5)));
+  // // original icon ratio was 5:7?
+  // display.drawBitmap(xMidMargin+60,yHumidity-21,epd_bitmap_humidity_icon_sm4,20,28,EPD_BLACK);
+
+  // display.display();
+  debugMessage("screenCO2 end",1);
+}
 
 void screenThreeThings()
 // Display three things about the badge owner
@@ -358,6 +318,11 @@ void screenThreeThings()
   debugMessage("screenThreeThings update completed",1);
 }
 
+void screenSensors()
+{
+  screenAlert("All sensors");
+}
+
 void screenHelperBatteryStatus(uint16_t initialX, uint16_t initialY, uint8_t barWidth, uint8_t barHeight)
 // helper function for screenXXX() routines that draws battery charge %
 {
@@ -372,18 +337,18 @@ void screenHelperBatteryStatus(uint16_t initialX, uint16_t initialY, uint8_t bar
     display.drawRect(initialX, initialY, barWidth, barHeight, EPD_BLACK);
     //battery percentage as rectangle fill, 1 pixel inset from the battery border
     display.fillRect((initialX + 2), (initialY + 2), int(0.5+(hardwareData.batteryPercent*((barWidth-4)/100.0))), (barHeight - 4), EPD_BLACK);
-    debugMessage(String("Battery percent displayed is ") + hardwareData.batteryPercent + "%, " + int(0.5+(hardwareData.batteryPercent*((barWidth-4)/100.0))) + " of " + (barWidth-4) + " pixels",1);
+    debugMessage(String("screenHelperBatteryStatus displayed ") + hardwareData.batteryPercent + "% -> " + int(0.5+(hardwareData.batteryPercent*((barWidth-4)/100.0))) + " of " + (barWidth-4) + " pixels",1);
   }
 }
 
 void screenHelperQRCode(int initialX, int initialY, String url)
 {
+  debugMessage ("screenHelperQRCode begin",1);
   QRCode qrcode;
   
   uint8_t qrcodeData[qrcode_getBufferSize(qrCodeVersion)];
   qrcode_initText(&qrcode, qrcodeData, qrCodeVersion, ECC_LOW, url.c_str());
 
-  debugMessage(String("QRCode size is: ")+ qrcode.size + " pixels",2);
   for (uint8_t y = 0; y < qrcode.size; y++) 
   {
     for (uint8_t x = 0; x < qrcode.size; x++) 
@@ -404,7 +369,51 @@ void screenHelperQRCode(int initialX, int initialY, String url)
       }
     }
   }
-  debugMessage("QRCode drawn to screen",1);
+  debugMessage("screenHelperQRCode end",1);
+}
+
+void screenHelperSparkLine(uint16_t initialX, uint16_t initialY, uint16_t xWidth, uint16_t yHeight) {
+  // // TEST ONLY: load test CO2 values
+  // // testSparkLineValues(sensorSampleSize);
+
+  // uint16_t co2Min = co2Samples[0];
+  // uint16_t co2Max = co2Samples[0];
+  // // # of pixels between each samples x and y coordinates
+  // uint8_t xPixelStep, yPixelStep;
+
+  // uint16_t sparkLineX[sensorSampleSize], sparkLineY[sensorSampleSize];
+
+  // // horizontal distance (pixels) between each displayed co2 value
+  // xPixelStep = (xWidth / (sensorSampleSize - 1));
+
+  // // determine min/max of CO2 samples
+  // // could use recursive function but sensorSampleSize should always be relatively small
+  // for (uint8_t loop = 0; loop < sensorSampleSize; loop++) {
+  //   if (co2Samples[loop] > co2Max) co2Max = co2Samples[loop];
+  //   if (co2Samples[loop] < co2Min) co2Min = co2Samples[loop];
+  // }
+  // debugMessage(String("Max CO2 in stored sample range is ") + co2Max + ", min is " + co2Min, 2);
+
+  // // vertical distance (pixels) between each displayed co2 value
+  // yPixelStep = round(((co2Max - co2Min) / yHeight) + .5);
+
+  // debugMessage(String("xPixelStep is ") + xPixelStep + ", yPixelStep is " + yPixelStep, 2);
+
+  // // TEST ONLY : sparkline border box
+  // // display.drawRect(initialX,initialY, xWidth,yHeight, GxEPD_BLACK);
+
+  // // determine sparkline x,y values
+  // for (uint8_t loop = 0; loop < sensorSampleSize; loop++) {
+  //   sparkLineX[loop] = (initialX + (loop * xPixelStep));
+  //   sparkLineY[loop] = ((initialY + yHeight) - (uint8_t)((co2Samples[loop] - co2Min) / yPixelStep));
+  //   // draw/extend sparkline after first value is generated
+  //   if (loop != 0)
+  //     display.drawLine(sparkLineX[loop - 1], sparkLineY[loop - 1], sparkLineX[loop], sparkLineY[loop], GxEPD_BLACK);
+  // }
+  // for (uint8_t loop = 0; loop < sensorSampleSize; loop++) {
+  //   debugMessage(String("X,Y coordinates for CO2 sample ") + loop + " is " + sparkLineX[loop] + "," + sparkLineY[loop], 2);
+  // }
+  // debugMessage("screenHelperSparkLine() complete", 1);
 }
 
 bool batteryRead()
@@ -483,7 +492,10 @@ bool sensorCO2Init()
 }
 
 bool sensorCO2Read()
-// sets global environment values from SCD40 sensor
+// DescriptionSets global environment values from SCD40 sensor
+// Parameters: none
+// Output : true if successful read, false if not
+// Improvement : This routine needs to return FALSE after XX read fails
 {
   #ifdef SENSOR_SIMULATE
     sensorCO2Simulate();
@@ -497,12 +509,8 @@ bool sensorCO2Read()
     uint16_t error;
 
     debugMessage("CO2 sensor read initiated",1);
-
-    // Loop attempting to read Measurement
     status = false;
     while(!status) {
-      delay(100);
-
       // Is data ready to be read?
       bool isDataReady = false;
       error = envSensor.getDataReadyFlag(isDataReady);
@@ -511,15 +519,13 @@ bool sensorCO2Read()
           debugMessage(String("Error trying to execute getDataReadyFlag(): ") + errorMessage,1);
           continue; // Back to the top of the loop
       }
-      if (!isDataReady) {
-          continue; // Back to the top of the loop
-      }
-      debugMessage("CO2 sensor data available",2);
+      //debugMessage("CO2 sensor data available",2);
+      // wonder if a small delay here would remove the prevalance of error messages from the next if block
 
       error = envSensor.readMeasurement(co2, temperature, humidity);
       if (error) {
           errorToString(error, errorMessage, 256);
-          debugMessage(String("SCD40 executing readMeasurement(): ") + errorMessage,1);
+          debugMessage(String("SCD40 executing readMeasurement(): ") + errorMessage,2);
           // Implicitly continues back to the top of the loop
       }
       else if (co2 < sensorCO2Min || co2 > sensorCO2Max)
@@ -530,17 +536,22 @@ bool sensorCO2Read()
       }
       else
       {
-        // Successfully read valid data
+        // valid measurement available, update globals
         sensorData.ambientTemperatureF = (temperature*1.8)+32.0;
         sensorData.ambientHumidity = humidity;
         sensorData.ambientCO2 = co2;
+        // update aggregate information
+        totalTemperatureF.include(sensorData.ambientTemperatureF);
+        totalHumidity.include(sensorData.ambientHumidity);
+        totalCO2.include(sensorData.ambientCO2);
         debugMessage(String("SCD40: ") + sensorData.ambientTemperatureF + "F, " + sensorData.ambientHumidity + "%, " + sensorData.ambientCO2 + " ppm",1);
-        // Update global sensor readings
-        status = true;  // We have data, can break out of loop
+        status = true;
+        break;
       }
+    delay(100); // why is this needed, sensor issue?
     }
   #endif
-  return(true);
+  return(status);
 }
 
 void powerNeoPixelEnable()
