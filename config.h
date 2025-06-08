@@ -23,9 +23,12 @@
 // #define BATTERY_APA 0x36 // 3000mAH
 
 // Configuration Step 3: Set personal information for screen display
-const String nameFirst	= "Eric";
-const String nameLast		= "Klein";
-const String nameEmail	= "eric@lemnos.vc";
+const String badgeNameFirst	=   "Eric";
+const String badgeNameLast =    "Klein";
+const String badgeEmail	=       "eric@lemnos.vc";
+const String badgeFirstThing =  "Hockey";
+const String badgeSecondThing = "Video Games";
+const String badgeThirdThing =  "Making";
 
 // Configuration Step 4: QR Code information for screen display
 const uint8_t qrCodeScaling = 3; 	// QRCode square size = Round ((smallest screen dimension)-((xmargin)*(ymargin)/33[LOW_ECC])

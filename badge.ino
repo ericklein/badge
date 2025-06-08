@@ -38,15 +38,10 @@ ezButton buttonOne(buttonD1Pin);
 // colors are EPD_WHITE, EPD_BLACK, EPD_GRAY, EPD_LIGHT, EPD_DARK
 ThinkInk_290_Grayscale4_T5 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY);
 
-#include <Fonts/FreeSans9pt7b.h>    // screenCO2
-#include <Fonts/FreeSans12pt7b.h>   // screenAlert, screenName, screenCO2
+#include <Fonts/FreeSans9pt7b.h>    // screenMain
+#include <Fonts/FreeSans12pt7b.h>   // screenAlert, screenName, screenThreeThings
 #include <Fonts/FreeSans18pt7b.h>   // screenThreeThings
-#include <Fonts/FreeSans24pt7b.h>   // screenCO2
-
-#include "Fonts/FreeSerif24pt7b.h"  // screenName
-#include "Fonts/FreeSerif48pt7b.h"  // screenName
-#include "Fonts/FreeSerif18pt7b.h"  // screenMain
-#include "Fonts/FreeSerif12pt7b.h"  // screenMain
+#include <Fonts/FreeSans24pt7b.h>   // screenMain
 
 #include "Fonts/meteocons24pt7b.h"  //screenCO2
 
@@ -209,10 +204,10 @@ void screenUpdate()
   neoPixelCO2();
   switch(screenCurrent) {
     case 0:
-      screenMain(nameFirst, nameLast, qrCodeURL);
+      screenMain(badgeNameFirst, badgeNameLast, qrCodeURL);
       break;
     case 1:
-      screenThreeThings();
+      screenThreeThings(badgeFirstThing, badgeSecondThing, badgeThirdThing);
       break;
     case 2:
       screenCO2();
@@ -221,35 +216,64 @@ void screenUpdate()
       screenSensors();
       break;
     default:
-      // This shouldn't happen, but if it does...
-      screenMain(nameFirst, nameLast, qrCodeURL);
-      debugMessage("bad screen ID",1);
+      // handle out of range screenCurrent
+      screenMain(badgeNameFirst, badgeNameLast, qrCodeURL);
+      debugMessage("Error: Unexpected screen ID",1);
       break;
   }
 }
 
 void screenAlert(String messageText)
-// Display error message centered on screen
+// Description: Display error message centered on screen
+// Parameters: String containing error message text
+// Output: NA
+// Improvement: errorWidth needs to account for inset start position
+// Improvement: if too long, split into two lines?
 {
   debugMessage("screenAlert start",1);
 
   int16_t x1, y1;
-  uint16_t width,height;
+  uint16_t largeFontWidth, largeFontHeight;
+  uint16_t smallFontWidth, smallFontHeight;
 
   display.clearBuffer();
   display.setTextColor(EPD_BLACK);
-  display.setFont(&FreeSans12pt7b);
-  display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &width, &height);
 
-  if (width >= display.width())
+  display.setFont(&FreeSans12pt7b);
+  display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &largeFontWidth, &largeFontHeight);
+  display.setCursor(display.width()/2-largeFontWidth/2,display.height()/2+largeFontHeight/2);
+  debugMessage(String("Large font width = ") + largeFontWidth + " pixels, Large font height = " + largeFontHeight + " pixels",2);
+  if (largeFontWidth >= (display.width()-(display.width()/2-(largeFontWidth/2))))
   {
-    debugMessage(String("ERROR: screenAlert '") + messageText + "' is " + abs(display.width()-width) + " pixels too long", 1);
+    debugMessage(String("ERROR: screenAlert '") + messageText + "' with large font is " + abs(display.width()-largeFontWidth-xMargins) + " pixels too long", 1);
+    display.setFont(&FreeSans9pt7b);
+    display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
+    debugMessage(String("Small font width = ") + smallFontWidth + " pixels, Small font height = " + smallFontHeight + " pixels",2);
+    display.setCursor(display.width()/2-smallFontWidth/2,display.height()/2+smallFontHeight/2);
+    if (smallFontWidth >= (display.width()-(display.width()/2-(smallFontWidth/2))))
+    {
+      // text is too long even if we shrink text size
+      // display it truncated at larger size
+      // IMPROVEMENT: Is it two words we can split?
+      debugMessage(String("ERROR: screenAlert '") + messageText + "' with small font is " + abs(display.width()-smallFontWidth-xMargins) + " pixels too long", 1);
+      display.setFont(&FreeSans12pt7b);
+      display.setCursor(display.width()/2-largeFontWidth/2,display.height()/2+largeFontHeight/2);
+    }
   }
-  display.setCursor(display.width()/2-width/2,display.height()/2+height/2);
   display.print(messageText);
-  //update display
+
   display.display();
   debugMessage("screenAlert end",1);
+
+      //   int spaceLocation;
+      // String partOne, partTwo;
+      // spaceLocation = secondThing.indexOf(' ');
+      // partOne = secondThing.substring(0,spaceLocation);
+      // partTwo = secondThing.substring(spaceLocation+1);
+      // display.setFont(&FreeSans18pt7b);
+      // display.print(partOne);
+      // display.setCursor(xMargins, 230);
+      // display.print(partTwo);
 }
 
 void screenMain(String firstName, String lastName, String url)
@@ -300,7 +324,7 @@ void screenCO2()
 // Display ambient temp, humidity, and CO2 level
 {
   debugMessage("screenCO2 start",1);
-  screenAlert("CO2 detail");
+  screenAlert("CO2 detail scr");
   // display.clearBuffer();
   // display.setTextColor(EPD_BLACK);
   
@@ -347,27 +371,97 @@ void screenCO2()
   debugMessage("screenCO2 end",1);
 }
 
-void screenThreeThings()
-// Display three things about the badge owner
+void screenThreeThings(String firstThing, String secondThing, String thirdThing)
+// Description: Display three things about the badge owner
+// Parameters: three strings describing owner
+// Output: NA
+// Improvement: if too long, split into two lines?
 {
   debugMessage("screenThreeThings start",1);
+
+  int16_t x1, y1;
+  uint16_t largeFontWidth, largeFontHeight;
+  uint16_t smallFontWidth, smallFontHeight;
+
   display.clearBuffer();
   display.setTextColor(EPD_BLACK);
+
+  display.setFont(&FreeSans12pt7b);
+  display.setCursor(xMargins,24);
+  display.print("I love");
+
+  // display firstThing
+  display.setCursor(xMargins,94);
   display.setFont(&FreeSans18pt7b);
-  display.setCursor(xMargins,display.height()/4);
-  display.print("Hockey");
-  display.setCursor(xMargins,display.height()/2);
-  display.print("Video games");
-  display.setCursor(xMargins,display.height()*3/4);
-  display.print("Making");
+  display.getTextBounds(firstThing.c_str(), 0, 0, &x1, &y1, &largeFontWidth, &largeFontHeight);
+  if (largeFontWidth >= (display.width()-xMargins))
+  {
+    debugMessage(String("ERROR: firstThing '") + firstThing + "' with large font is " + abs(display.width()-largeFontWidth-xMargins) + " pixels too long", 1);
+    display.setFont(&FreeSans12pt7b);
+    display.getTextBounds(firstThing.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
+    if (smallFontWidth >= (display.width()-xMargins))
+    {
+      // text is too long even if we shrink text size
+      // display it truncated at larger size
+      // IMPROVEMENT: Is it two words we can split?
+      debugMessage(String("ERROR: firstThing '") + firstThing + "' with small font is " + abs(display.width()-smallFontWidth-xMargins) + " pixels too long", 1);
+      display.setFont(&FreeSans18pt7b);
+    }
+  }
+  display.print(firstThing);
+
+  // display secondThing
+  display.setCursor(xMargins,184);
+    display.setFont(&FreeSans18pt7b);
+  display.getTextBounds(secondThing.c_str(), 0, 0, &x1, &y1, &largeFontWidth, &largeFontHeight);
+  if (largeFontWidth >= (display.width()-xMargins))
+  {
+    debugMessage(String("ERROR: secondThing '") + secondThing + "' with large font is " + abs(display.width()-largeFontWidth-xMargins) + " pixels too long", 1);
+    display.setFont(&FreeSans12pt7b);
+    display.getTextBounds(secondThing.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
+    if (smallFontWidth >= (display.width()-xMargins))
+    {
+      // text is too long even if we shrink text size
+      // display it truncated at larger size
+      // IMPROVEMENT: Is it two words we can split?
+      debugMessage(String("ERROR: secondThing '") + secondThing + "' with small font is " + abs(display.width()-smallFontWidth-xMargins) + " pixels too long", 1);
+      display.setFont(&FreeSans18pt7b);
+    }
+  }
+  display.print(secondThing);
+
+  // display thirdThing
+  display.setCursor(xMargins,274);
+  display.setFont(&FreeSans18pt7b);
+  display.getTextBounds(thirdThing.c_str(), 0, 0, &x1, &y1, &largeFontWidth, &largeFontHeight);
+  if (largeFontWidth >= (display.width()-xMargins))
+  {
+    debugMessage(String("ERROR: thirdThing '") + thirdThing + "' with large font is " + abs(display.width()-largeFontWidth-xMargins) + " pixels too long", 1);
+    display.setFont(&FreeSans12pt7b);
+    display.getTextBounds(thirdThing.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
+    if (smallFontWidth >= (display.width()-xMargins))
+    {
+      // text is too long even if we shrink text size
+      // display it truncated at larger size
+      // IMPROVEMENT: Is it two words we can split?
+      debugMessage(String("ERROR: thirdThing '") + thirdThing + "' with small font is " + abs(display.width()-smallFontWidth-xMargins) + " pixels too long", 1);
+      display.setFont(&FreeSans18pt7b);
+    }
+  }
+  display.print(thirdThing);
 
   display.display();
   debugMessage("screenThreeThings update completed",1);
 }
 
+
 void screenSensors()
 {
+  debugMessage("screenSensors start",1);
+
   screenAlert("All sensors");
+
+  debugMessage("screenSensors end",1);
 }
 
 void screenHelperBatteryStatus(uint16_t initialX, uint16_t initialY, uint8_t barWidth, uint8_t barHeight)
