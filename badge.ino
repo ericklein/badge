@@ -22,7 +22,7 @@ Adafruit_NeoPixel neopixels = Adafruit_NeoPixel(neoPixelCount, PIN_NEOPIXEL, NEO
 
 // scd40 environment sensor
 #include <SensirionI2CScd4x.h>
-SensirionI2CScd4x envSensor;
+SensirionI2CScd4x co2Sensor;
 
 // battery voltage sensor
 #include <Adafruit_LC709203F.h>
@@ -91,6 +91,45 @@ void setup()
     debugMessage(String("Starting badge with ") + sensorSampleInterval + " second sample interval",1);
   #endif
 
+  esp_sleep_wakeup_cause_t wakeup_reason;
+  wakeup_reason = esp_sleep_get_wakeup_cause();
+  switch (wakeup_reason)
+  {
+    case ESP_SLEEP_WAKEUP_TIMER : // do nothing
+    {
+      debugMessage("wakeup cause: timer",1);
+    }
+    break;
+    case ESP_SLEEP_WAKEUP_EXT0 :
+    {
+      debugMessage("wakeup cause: RTC gpio pin",1);
+    }
+    break;
+    case ESP_SLEEP_WAKEUP_EXT1 :
+    {
+      int gpioReason = log(esp_sleep_get_ext1_wakeup_status())/log(2);
+      debugMessage(String("wakeup cause: RTC gpio pin: ") + gpioReason,1);
+      // implment switch (gpioReason)
+    }
+    break;
+    case ESP_SLEEP_WAKEUP_TOUCHPAD : 
+    {
+      debugMessage("wakup cause: touchpad",1);
+    }  
+    break;
+    case ESP_SLEEP_WAKEUP_ULP : 
+    {
+      debugMessage("wakeup cause: program",1);
+    }  
+    break; 
+    default :
+    {
+      // likely caused by reset after firmware load
+      debugMessage(String("Wakeup likely cause: first boot after firmware flash, reason: ") + wakeup_reason,1);
+    }
+    break;
+  }
+
   powerNeoPixelEnable();
 
   // Initialize e-ink screen
@@ -155,6 +194,14 @@ void loop()
   }
 
   // is it time to go to sleep?
+  if((millis()) >= (sleepInterval * 1000)) // converting sensorSampleInterval into milliseconds
+  {
+    // redraw main screen
+    screenCurrent = 0;
+    screenUpdate();
+    // go to sleep
+    powerDisable(sleepTime);
+  }
 }
 
 void screenUpdate() 
@@ -446,10 +493,13 @@ bool sensorCO2Init()
     uint16_t error;
 
     Wire.begin();
-    envSensor.begin(Wire);
+    co2Sensor.begin(Wire);
+
+    // Question : needed for MagTag version, but not ESP32V2?!
+    co2Sensor.wakeUp();
 
     // stop potentially previously started measurement.
-    error = envSensor.stopPeriodicMeasurement();
+    error = co2Sensor.stopPeriodicMeasurement();
     if (error) {
       errorToString(error, errorMessage, 256);
       debugMessage(String(errorMessage) + " executing SCD40 stopPeriodicMeasurement()",1);
@@ -458,17 +508,17 @@ bool sensorCO2Init()
 
     // Check onboard configuration settings while not in active measurement mode
     float offset;
-    error = envSensor.getTemperatureOffset(offset);
+    error = co2Sensor.getTemperatureOffset(offset);
     if (error == 0){
-        error = envSensor.setTemperatureOffset(sensorTempCOffset);
+        error = co2Sensor.setTemperatureOffset(sensorTempCOffset);
         if (error == 0)
           debugMessage(String("Initial SCD40 temperature offset ") + offset + " ,set to " + sensorTempCOffset,2);
     }
 
     uint16_t sensor_altitude;
-    error = envSensor.getSensorAltitude(sensor_altitude);
+    error = co2Sensor.getSensorAltitude(sensor_altitude);
     if (error == 0){
-      error = envSensor.setSensorAltitude(SITE_ALTITUDE);  // optimizes CO2 reading
+      error = co2Sensor.setSensorAltitude(SITE_ALTITUDE);  // optimizes CO2 reading
       if (error == 0)
         debugMessage(String("Initial SCD40 altitude ") + sensor_altitude + " meters, set to " + SITE_ALTITUDE,2);
     }
@@ -476,8 +526,8 @@ bool sensorCO2Init()
     // Start Measurement.  For high power mode, with a fixed update interval of 5 seconds
     // (the typical usage mode), use startPeriodicMeasurement().  For low power mode, with
     // a longer fixed sample interval of 30 seconds, use startLowPowerPeriodicMeasurement()
-    // uint16_t error = envSensor.startPeriodicMeasurement();
-    error = envSensor.startLowPowerPeriodicMeasurement();
+    // uint16_t error = co2Sensor.startPeriodicMeasurement();
+    error = co2Sensor.startLowPowerPeriodicMeasurement();
     if (error) {
       errorToString(error, errorMessage, 256);
       debugMessage(String(errorMessage) + " executing SCD40 startLowPowerPeriodicMeasurement()",1);
@@ -513,7 +563,7 @@ bool sensorCO2Read()
     while(!status) {
       // Is data ready to be read?
       bool isDataReady = false;
-      error = envSensor.getDataReadyFlag(isDataReady);
+      error = co2Sensor.getDataReadyFlag(isDataReady);
       if (error) {
           errorToString(error, errorMessage, 256);
           debugMessage(String("Error trying to execute getDataReadyFlag(): ") + errorMessage,1);
@@ -522,7 +572,7 @@ bool sensorCO2Read()
       //debugMessage("CO2 sensor data available",2);
       // wonder if a small delay here would remove the prevalance of error messages from the next if block
 
-      error = envSensor.readMeasurement(co2, temperature, humidity);
+      error = co2Sensor.readMeasurement(co2, temperature, humidity);
       if (error) {
           errorToString(error, errorMessage, 256);
           debugMessage(String("SCD40 executing readMeasurement(): ") + errorMessage,2);
@@ -565,7 +615,7 @@ void powerNeoPixelEnable()
   neopixels.begin();
   neopixels.setBrightness(neoPixelBrightness);
   neopixels.show(); // Initialize all pixels to off
-  debugMessage("power: neopixels on",1);
+  debugMessage("power on: neopixels",1);
 }
 
 void neoPixelCO2()
@@ -601,18 +651,18 @@ void powerDisable(int deepSleepTime)
 
   // power down SCD40
   // stops potentially started measurement then powers down SCD40
-  uint16_t error = envSensor.stopPeriodicMeasurement();
+  uint16_t error = co2Sensor.stopPeriodicMeasurement();
   if (error) {
     errorToString(error, errorMessage, 256);
     debugMessage(String(errorMessage) + " executing SCD40 stopPeriodicMeasurement()",1);
   }
-  envSensor.powerDown();
+  co2Sensor.powerDown();
   debugMessage("power off: SCD40",1);
 
   //power down neopixels
-  // pinMode(NEOPIXEL_POWER, OUTPUT);
-  // digitalWrite(NEOPIXEL_POWER, HIGH); // off
-  // debugMessage("power off: neopixels",1);
+  pinMode(NEOPIXEL_POWER, OUTPUT);
+  digitalWrite(NEOPIXEL_POWER, HIGH); // off
+  debugMessage("power off: neopixels",1);
 
   // Using external trigger ext1 to support multiple button interupt
   // esp_sleep_enable_ext1_wakeup(BUTTON_PIN_BITMASK,ESP_EXT1_WAKEUP_ANY_HIGH);
