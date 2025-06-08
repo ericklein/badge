@@ -223,57 +223,81 @@ void screenUpdate()
   }
 }
 
-void screenAlert(String messageText)
-// Description: Display error message centered on screen
+bool screenAlert(String messageText)
+// Description: Display error message centered on screen, using different font sizes and/or splitting to fit on screen
 // Parameters: String containing error message text
-// Output: NA
-// Improvement: errorWidth needs to account for inset start position
-// Improvement: if too long, split into two lines?
+// Output: NA (void)
+// Improvement: ?
 {
   debugMessage("screenAlert start",1);
 
+  bool status = true;
   int16_t x1, y1;
-  uint16_t largeFontWidth, largeFontHeight;
+  uint16_t largeFontPhraseOneWidth, largeFontPhraseOneHeight;
   uint16_t smallFontWidth, smallFontHeight;
 
   display.clearBuffer();
   display.setTextColor(EPD_BLACK);
 
   display.setFont(&FreeSans12pt7b);
-  display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &largeFontWidth, &largeFontHeight);
-  display.setCursor(display.width()/2-largeFontWidth/2,display.height()/2+largeFontHeight/2);
-  debugMessage(String("Large font width = ") + largeFontWidth + " pixels, Large font height = " + largeFontHeight + " pixels",2);
-  if (largeFontWidth >= (display.width()-(display.width()/2-(largeFontWidth/2))))
+  display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &largeFontPhraseOneWidth, &largeFontPhraseOneHeight);
+  if (largeFontPhraseOneWidth <= (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2))))
   {
-    debugMessage(String("ERROR: screenAlert '") + messageText + "' with large font is " + abs(display.width()-largeFontWidth-xMargins) + " pixels too long", 1);
+    // fits with large font, display
+    display.setCursor(display.width()/2-largeFontPhraseOneWidth/2,display.height()/2+largeFontPhraseOneHeight/2);
+    display.print(messageText);
+  }
+  else
+  {
+    debugMessage(String("ERROR: screenAlert messageText '") + messageText + "' with large font is " + abs(largeFontPhraseOneWidth - (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2)))) + " pixels too long", 1);
+    // does the string break into two pieces based on a space character?
+    int spaceLocation;
+    String messageTextPartOne, messageTextPartTwo;
+    uint16_t largeFontPhraseTwoWidth, largeFontPhraseTwoHeight;
+
+    spaceLocation = messageText.indexOf(' ');
+    if (spaceLocation)
+    {
+      // has a space character, will it fit on two lines?
+      messageTextPartOne = messageText.substring(0,spaceLocation);
+      messageTextPartTwo = messageText.substring(spaceLocation+1);
+      display.getTextBounds(messageTextPartOne.c_str(), 0, 0, &x1, &y1, &largeFontPhraseOneWidth, &largeFontPhraseOneHeight);
+      display.getTextBounds(messageTextPartTwo.c_str(), 0, 0, &x1, &y1, &largeFontPhraseTwoWidth, &largeFontPhraseTwoHeight);
+      if ((largeFontPhraseOneWidth <= (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2)))) && (largeFontPhraseTwoWidth <= (display.width()-(display.width()/2-(largeFontPhraseTwoWidth/2)))))
+      {
+        // fits on two lines, display
+        display.setCursor(display.width()/2-largeFontPhraseOneWidth/2,(display.height()/2+largeFontPhraseOneHeight/2)+6);
+        display.print(messageTextPartOne);
+        display.setCursor(display.width()/2-largeFontPhraseOneWidth/2,(display.height()/2+largeFontPhraseOneHeight/2)-18);
+        display.print(messageTextPartTwo);
+      }
+    }
+    debugMessage(String("Message part one with large fonts is ") + largeFontPhraseOneWidth + " pixels wide vs. available " + (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2))) + " pixels",1);
+    debugMessage(String("Message part two with large fonts is ") + largeFontPhraseTwoWidth + " pixels wide vs. available " + (display.width()-(display.width()/2-(largeFontPhraseTwoWidth/2))) + " pixels",1);
+    // at large font size, string doesn't fit even if it can be broken into two lines
+    // does the string fit with small size text?
     display.setFont(&FreeSans9pt7b);
     display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
-    debugMessage(String("Small font width = ") + smallFontWidth + " pixels, Small font height = " + smallFontHeight + " pixels",2);
-    display.setCursor(display.width()/2-smallFontWidth/2,display.height()/2+smallFontHeight/2);
-    if (smallFontWidth >= (display.width()-(display.width()/2-(smallFontWidth/2))))
+    if (smallFontWidth <= (display.width()-(display.width()/2-(smallFontWidth/2))))
     {
-      // text is too long even if we shrink text size
-      // display it truncated at larger size
-      // IMPROVEMENT: Is it two words we can split?
-      debugMessage(String("ERROR: screenAlert '") + messageText + "' with small font is " + abs(display.width()-smallFontWidth-xMargins) + " pixels too long", 1);
+      // fits with small size
+      display.setCursor(display.width()/2-smallFontWidth/2,display.height()/2+smallFontHeight/2);
+      display.print(messageText);
+    }
+    else
+    {
+      debugMessage(String("ERROR: screenAlert messageText '") + messageText + "' with small font is " + abs(smallFontWidth - (display.width()-(display.width()/2-(smallFontWidth/2)))) + " pixels too long", 1);
+      // doesn't fit at any size/line split configuration, display as truncated, large text
       display.setFont(&FreeSans12pt7b);
-      display.setCursor(display.width()/2-largeFontWidth/2,display.height()/2+largeFontHeight/2);
+      display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &largeFontPhraseOneWidth, &largeFontPhraseOneHeight);
+      display.setCursor(display.width()/2-largeFontPhraseOneWidth/2,display.height()/2+largeFontPhraseOneHeight/2);
+      display.print(messageText);
+      status = false;
     }
   }
-  display.print(messageText);
-
   display.display();
   debugMessage("screenAlert end",1);
-
-      //   int spaceLocation;
-      // String partOne, partTwo;
-      // spaceLocation = secondThing.indexOf(' ');
-      // partOne = secondThing.substring(0,spaceLocation);
-      // partTwo = secondThing.substring(spaceLocation+1);
-      // display.setFont(&FreeSans18pt7b);
-      // display.print(partOne);
-      // display.setCursor(xMargins, 230);
-      // display.print(partTwo);
+  return status;
 }
 
 void screenMain(String firstName, String lastName, String url)
@@ -324,7 +348,8 @@ void screenCO2()
 // Display ambient temp, humidity, and CO2 level
 {
   debugMessage("screenCO2 start",1);
-  screenAlert("CO2 detail scr");
+  screenAlert("CO2 details");
+
   // display.clearBuffer();
   // display.setTextColor(EPD_BLACK);
   
@@ -459,7 +484,7 @@ void screenSensors()
 {
   debugMessage("screenSensors start",1);
 
-  screenAlert("All sensors");
+  screenAlert("All sensors screen");
 
   debugMessage("screenSensors end",1);
 }
