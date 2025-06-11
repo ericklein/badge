@@ -65,6 +65,7 @@ typedef struct
 {
   float batteryPercent;
   float batteryVoltage;
+  float batteryTemperatureF;
   //uint8_t rssi;
 } hdweData;
 hdweData hardwareData;
@@ -504,13 +505,14 @@ void screenSensors()
   debugMessage("screenSensors start",1);
 
   // screen layout assists
-  const uint16_t xMidMargin = ((display.width()/2) + xMargins);
-  const uint16_t yLabel = 40;
-  const uint16_t yCO2 = 80 + yTopMargin;
-  const uint16_t yTempF = 120 + yTopMargin;
-  const uint16_t yHumidity = 180 + yTopMargin;
-  const uint16_t ySparkline = (display.height()/2);
-  const uint16_t sparklineHeight = ((display.height()/2)-(yBottomMargin));
+  const uint16_t xMidMargin = (display.width()/2);
+  const uint16_t yscreenLabel = 40;
+  const uint16_t yCO2Label = 80;
+  const uint16_t yTempLabel = 120;
+  const uint16_t yHumidityLabel = 180;
+  const uint16_t yCO2Value = yscreenLabel + 24;
+  const uint16_t yTempValue = yTempLabel + 24;
+  const uint16_t yHumidityValue = yHumidityLabel + 24;
 
   display.clearBuffer();
   display.setTextColor(EPD_BLACK);
@@ -520,36 +522,46 @@ void screenSensors()
 
   // label
   display.setFont(&FreeSans12pt7b);
-  display.setCursor(xMidMargin, yLabel);
+  display.setCursor(xMargins, yscreenLabel);
   display.print("Air Quality");
 
   // co2 main line
-  display.setFont(&FreeSans12pt7b);
-  display.setCursor(xMargins, yCO2);
+  display.setFont(&FreeSans18pt7b);
+  display.setCursor(xMidMargin, yCO2Label);
   display.print("CO");
-  display.setCursor(xMargins+50,yCO2);
-  display.print(" " + co2Labels[co2Range(sensorData.ambientCO2)]);
   display.setFont(&FreeSans9pt7b);
-  display.setCursor(xMargins+35,(yCO2+10));
+  display.setCursor(xMidMargin+35,(yCO2Label+10));
   display.print("2");
   // co2 value
+  display.setCursor(xMidMargin,yCO2Value);
+  display.print(co2Labels[co2Range(sensorData.ambientCO2)]);
   display.setFont();
-  display.setCursor((xMargins+80),(yCO2+7));
+  display.setCursor((xMargins+80),(yCO2Value+7));
   display.print("(" + String(sensorData.ambientCO2) + ")");
 
   // indoor tempF
+  // label
+  display.setFont(&FreeSans18pt7b);
+  display.setCursor(xMidMargin,yTempLabel);
+  display.print("Temp");
+  // value
   display.setFont(&FreeSans24pt7b);
-  display.setCursor(xMidMargin,yTempF);
+  display.setCursor(xMidMargin,yTempValue);
   display.print(String((int)(sensorData.ambientTemperatureF + .5)));
   display.setFont(&meteocons24pt7b);
   display.print("+");
 
   // indoor humidity
+  //label
+  display.setFont(&FreeSans18pt7b);
+  display.setCursor(xMidMargin,yHumidityLabel);
+  display.print("Temp");
+  //value
   display.setFont(&FreeSans24pt7b);
-  display.setCursor(xMidMargin, yHumidity);
+  display.setCursor(xMidMargin, yHumidityValue);
   display.print(String((int)(sensorData.ambientHumidity + 0.5)));
   // original icon ratio was 5:7?
-  display.drawBitmap(xMidMargin+60,yHumidity-21,epd_bitmap_humidity_icon_sm4,20,28,EPD_BLACK);
+  display.drawBitmap(xMidMargin+60,yHumidityValue-21,epd_bitmap_humidity_icon_sm4,20,28,EPD_BLACK);
 
   display.display();
   debugMessage("screenSensors end",1);
@@ -557,18 +569,25 @@ void screenSensors()
 
 void screenHelperBatteryStatus(uint16_t initialX, uint16_t initialY, uint8_t barWidth, uint8_t barHeight)
 // helper function for screenXXX() routines that draws battery charge %
-{
-  // IMPROVEMENT : Screen dimension boundary checks for passed parameters
-  // IMPROVEMENT : Check for offscreen drawing based on passed parameters
- 
+// Description: helper function for screenXXX() routines, displaying battery charge % in a battery icon
+// Parameters:
+// Output: NA (void)
+// IMPROVEMENT : Screen dimension boundary checks for passed parameters
+// IMPROVEMENT : Check for offscreen drawing based on passed parameters
+// IMPROVEMENT: batteryNub isn't placed properly when barHeight is changed from (default) 10 pixels
+{ 
   if (batteryRead(batteryReadsPerSample))
   {
     // battery nub; width = 3pix, height = 60% of barHeight
     display.fillRect((initialX+barWidth), (initialY+(int(barHeight/5))), 3, (int(barHeight*3/5)), EPD_BLACK);
     // battery border
     display.drawRect(initialX, initialY, barWidth, barHeight, EPD_BLACK);
-    //battery percentage as rectangle fill, 1 pixel inset from the battery border
+    // battery percentage as rectangle fill, 1 pixel inset from the battery border
     display.fillRect((initialX + 2), (initialY + 2), int(0.5+(hardwareData.batteryPercent*((barWidth-4)/100.0))), (barHeight - 4), EPD_BLACK);
+    // DEBUG USE ONLY, display voltage level in the icon, requires changing bar height to 14 pixels
+    // display.setFont(); // switch to generic small font
+    // display.setCursor(initialX +2 ,initialY + 2);
+    // display.print(hardwareData.batteryVoltage);
     debugMessage(String("screenHelperBatteryStatus displayed ") + hardwareData.batteryPercent + "% -> " + int(0.5+(hardwareData.batteryPercent*((barWidth-4)/100.0))) + " of " + (barWidth-4) + " pixels",1);
   }
 }
@@ -650,7 +669,10 @@ void screenHelperSparkLine(uint16_t initialX, uint16_t initialY, uint16_t xWidth
 }
 
 bool batteryRead(uint8_t reads)
-// sets global battery values from i2c battery monitor or analog pin value on supported boards
+// Description: sets global battery values from i2c battery monitor or analog pin value (on supported boards)
+// Parameters: integer that sets how many times the analog pin is sampled
+// Output: NA (globals)
+// Improvement: MAX17084 support
 {
   #ifdef HARDWARE_SIMULATE
     batterySimulate();
@@ -659,31 +681,32 @@ bool batteryRead(uint8_t reads)
     // is LC709203F on i2c available?
     if (lc.begin())
     {
+      debugMessage("batteryRead using LC709203F monitor",2);
       lc.setPackAPA(BATTERY_APA);
-      //lc.setThermistorB(3950);
+      lc.setThermistorB(3950);
 
       hardwareData.batteryPercent = lc.cellPercent();
       hardwareData.batteryVoltage = lc.cellVoltage();
-      //hardwareData.batteryTemperatureF = 32 + (1.8* lc.getCellTemperature());
+      hardwareData.batteryTemperatureF = 32 + (1.8* lc.getCellTemperature());
     }
     else 
     {
       // read gpio pin on supported boards for battery level
-      #if defined(ARDUINO_ADAFRUIT_FEATHER_ESP32_V2)
-        // modified from the Adafruit power management guide for Adafruit ESP32V2
-        float accumulatedVoltage = 0.0;
-        for (uint8_t loop = 0; loop < reads; loop++)
-        {
-          accumulatedVoltage += analogReadMilliVolts(BATTERY_VOLTAGE_PIN);
-        }
-        hardwareData.batteryVoltage = accumulatedVoltage/reads; // we now have the average reading
-        // convert into volts  
-        hardwareData.batteryVoltage *= 2;    // we divided by 2, so multiply back
-        hardwareData.batteryVoltage /= 1000; // convert to volts!
-        hardwareData.batteryPercent = batteryGetChargeLevel(hardwareData.batteryVoltage);
-      #endif
+      // modified from the Adafruit power management guide
+      debugMessage("batteryRead using GPIO pin",2);
+      float accumulatedVoltage = 0.0f;
+      for (uint8_t loop = 0; loop < reads; loop++)
+      {
+        accumulatedVoltage += analogReadMilliVolts(BATTERY_VOLTAGE_PIN);
+        debugMessage(String("Battery read ") + loop + " is " + analogReadMilliVolts(BATTERY_VOLTAGE_PIN) + "mV",2);
+      }
+      hardwareData.batteryVoltage = accumulatedVoltage/reads; // we now have the average reading
+      // convert into volts  
+      hardwareData.batteryVoltage *= 2;    // we divided by 2, so multiply back
+      hardwareData.batteryVoltage /= 1000; // convert to volts!
+      hardwareData.batteryPercent = batteryGetChargeLevel(hardwareData.batteryVoltage);
     }
-    if (hardwareData.batteryVoltage != 0) {
+    if (hardwareData.batteryVoltage) {
       debugMessage(String("Battery voltage: ") + hardwareData.batteryVoltage + "v, percent: " + hardwareData.batteryPercent + "%", 1);
       return true;
     }
@@ -692,16 +715,19 @@ bool batteryRead(uint8_t reads)
   #endif
 }
 
-uint8_t batteryGetChargeLevel(float volts) {
+uint8_t batteryGetChargeLevel(float volts)
+// Description: sets global battery values from i2c battery monitor or analog pin value (on supported boards)
+// Parameters: battery voltage as float
+// Output: battery percentage as int (0-100)
+// Improvement: NA
+{
   uint8_t idx = 50;
   uint8_t prev = 0;
   uint8_t half = 0;
-  if (volts >= 4.2) {
+  if (volts >= 4.2)
     return 100;
-  }
-  if (volts <= 3.2) {
+  if (volts <= 3.2)
     return 0;
-  }
   while (true) {
     half = abs(idx - prev) / 2;
     prev = idx;
@@ -714,7 +740,7 @@ uint8_t batteryGetChargeLevel(float volts) {
       break;
     }
   }
-  debugMessage(String("Battery percentage as int is ") + idx + "%", 1);
+  debugMessage(String("batteryGetChargeLevel returning ") + idx + " percent", 1);
   return idx;
 }
 

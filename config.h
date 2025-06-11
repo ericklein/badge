@@ -64,9 +64,10 @@ const uint8_t screenSwapInterval = 30; // in seconds
 // screen layout assists
 const uint8_t xMargins = 5;
 const uint8_t yTopMargin = 5;
-const uint8_t yBottomMargin = 2;
+const uint8_t yBottomMargin = 5;
 const uint8_t batteryBarWidth = 28;
 const uint8_t batteryBarHeight = 10;
+// const uint8_t batteryBarHeight = 14; // larger to display debug voltage text
 
 // MagTag neopixel configuration
 const uint8_t neoPixelCount = 4;
@@ -74,7 +75,8 @@ const uint8_t neoPixelBrightness = 30;
 
 //Battery 
 // analog pin used to reading battery voltage
-#define BATTERY_VOLTAGE_PIN A13
+// #define BATTERY_VOLTAGE_PIN A13 // Adafruit Feather ESP32V2
+#define BATTERY_VOLTAGE_PIN 04 // Adafruit MagTag
 // number of analog pin reads sampled to average battery voltage
 const uint8_t   batteryReadsPerSample = 5;
 // battery charge level lookup table
