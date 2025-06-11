@@ -32,7 +32,7 @@ const String badgeNameFirst	=   "Eric";
 const String badgeNameLast =    "Klein";
 const String badgeEmail	=       "eric@lemnos.vc";
 const String badgeFirstThing =  "Hockey";
-const String badgeSecondThing = "Video Games";
+const String badgeSecondThing = "Gaming";
 const String badgeThirdThing =  "Making";
 
 // Configuration Step 5: QR Code information for screen display

@@ -16,10 +16,6 @@
 
 // hardware support
 
-// neopixels
-#include <Adafruit_NeoPixel.h>
-Adafruit_NeoPixel neopixels = Adafruit_NeoPixel(neoPixelCount, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
-
 #ifndef HARDWARE_SIMULATE
   // instanstiate SCD4X hardware object
   #include <SensirionI2CScd4x.h>
@@ -29,6 +25,10 @@ Adafruit_NeoPixel neopixels = Adafruit_NeoPixel(neoPixelCount, PIN_NEOPIXEL, NEO
   #include <Adafruit_LC709203F.h>
   Adafruit_LC709203F lc;
 #endif
+
+// neopixels
+#include <Adafruit_NeoPixel.h>
+Adafruit_NeoPixel neopixels = Adafruit_NeoPixel(neoPixelCount, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
 
 // button support
 #include <ezButton.h>
@@ -104,7 +104,7 @@ void setup()
     break;
     case ESP_SLEEP_WAKEUP_EXT1 :
     {
-      int gpioReason = log(esp_sleep_get_ext1_wakeup_status())/log(2);
+      uint16_t gpioReason = log(esp_sleep_get_ext1_wakeup_status())/log(2);
       debugMessage(String("wakeup cause: RTC gpio pin: ") + gpioReason,1);
       // implment switch (gpioReason)
     }
@@ -257,7 +257,7 @@ bool screenAlert(String messageText)
   {
     debugMessage(String("ERROR: screenAlert messageText '") + messageText + "' with large font is " + abs(largeFontPhraseOneWidth - (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2)))) + " pixels too long", 1);
     // does the string break into two pieces based on a space character?
-    int spaceLocation;
+    uint8_t spaceLocation;
     String messageTextPartOne, messageTextPartTwo;
     uint16_t largeFontPhraseTwoWidth, largeFontPhraseTwoHeight;
 
@@ -315,10 +315,10 @@ void screenMain(String firstName, String lastName, String url)
   debugMessage("screenMain start",1);
 
   // screen layout assists
-  const int xMidMargin = ((display.width()/2) + xMargins);
-  const int yTempF = 36 + yTopMargin;
-  const int yHumidity = 90;
-  const int yCO2 = 40;
+  const uint16_t xMidMargin = ((display.width()/2) + xMargins);
+  const uint16_t yTempF = 36 + yTopMargin;
+  const uint16_t yHumidity = 90;
+  const uint16_t yCO2 = 40;
 
   display.clearBuffer();
 
@@ -333,7 +333,7 @@ void screenMain(String firstName, String lastName, String url)
   // QR code
   screenHelperQRCode(12,98,url);
 
-  //main line
+  // co2 main line
   display.setFont(&FreeSans12pt7b);
   display.setCursor(xMargins, 240);
   display.print("CO");
@@ -342,7 +342,7 @@ void screenMain(String firstName, String lastName, String url)
   display.setFont(&FreeSans9pt7b);
   display.setCursor(xMargins+35,(240+10));
   display.print("2");
-  // value line
+  // co2 value
   display.setFont();
   display.setCursor((xMargins+80),(240+7));
   display.print("(" + String(sensorData.ambientCO2) + ")");
@@ -362,35 +362,51 @@ void screenCO2()
   debugMessage("screenCO2 start",1);
 
   // screen layout assists
-  const int xMidMargin = ((display.width()/2) + xMargins);
-  const int yTempF = 36 + yTopMargin;
-  const int yHumidity = 90;
-  const int yCO2 = 40;
-  const int ySparkline = (display.height()/2);
-  const int sparklineHeight = ((display.height()/2)-(yBottomMargin));
+  const uint16_t xMidMargin = ((display.width()/2) - 40);
+  const uint16_t yCO2Label = 40;
+  const uint16_t yCO2Ambient = 80;
+  const uint16_t yCO2High = 120;
+  const uint16_t yCO2Low = 160;
+  const uint16_t ySparkline = 220;
+  const uint16_t sparklineHeight = ((display.height()/2)-(yBottomMargin));
 
   display.clearBuffer();
   display.setTextColor(EPD_BLACK);
-  
+
+  // label
+  display.setFont(&FreeSans24pt7b);
+  display.setCursor(xMidMargin, yCO2Label);
+  display.print("CO2");
+
+  // ambient CO2
+  display.setFont(&FreeSans12pt7b);
+  display.setCursor(xMidMargin, yCO2Ambient);
+  display.print("Current");
+  display.setFont(&FreeSans24pt7b);
+  display.setCursor((xMargins),(yCO2Ambient+35));
+  display.print(sensorData.ambientCO2);
+
+  // high CO2
+  display.setFont(&FreeSans12pt7b);
+  display.setCursor(xMidMargin, yCO2High);
+  display.print("High");
+  display.setFont(&FreeSans24pt7b);
+  display.setCursor((xMargins),(yCO2High+35));
+  display.print("1200");
+
+    // low CO2
+  display.setFont(&FreeSans12pt7b);
+  display.setCursor(xMidMargin, yCO2Low);
+  display.print("Low");
+  display.setFont(&FreeSans24pt7b);
+  display.setCursor((xMargins),(yCO2Low+35));
+  display.print("432");
+
+  // CO2 sparkline
+  screenHelperSparkLine(xMargins,ySparkline,(display.width() - (2 * xMargins)),display.height()-ySparkline-yTopMargin);
+
   // // draws battery in the lower right corner. -3 in first parameter accounts for battery nub
   // screenHelperBatteryStatus((display.width()-xMargins-batteryBarWidth-3),(display.height()-yBottomMargin-batteryBarHeight),batteryBarWidth,batteryBarHeight);
-
-  // display sparkline
-  screenHelperSparkLine(xMargins,ySparkline,((display.width()/2) - (2 * xMargins)),sparklineHeight);
-
-  // main line
-  display.setFont(&FreeSans12pt7b);
-  display.setCursor(xMargins, yCO2);
-  display.print("CO");
-  display.setCursor(xMargins+50,yCO2);
-  display.print(": " + co2Labels[co2Range(sensorData.ambientCO2)]);
-  display.setFont(&FreeSans9pt7b);
-  display.setCursor(xMargins+35,(yCO2+10));
-  display.print("2");
-  // value line
-  display.setFont();
-  display.setCursor((xMargins+88),(yCO2+7));
-  display.print("(" + String(sensorData.ambientCO2) + ")");
 
   display.display();
   debugMessage("screenCO2 end",1);
@@ -488,12 +504,13 @@ void screenSensors()
   debugMessage("screenSensors start",1);
 
   // screen layout assists
-  const int xMidMargin = ((display.width()/2) + xMargins);
-  const int yTempF = 36 + yTopMargin;
-  const int yHumidity = 90;
-  const int yCO2 = 40;
-  const int ySparkline = (display.height()/2);
-  const int sparklineHeight = ((display.height()/2)-(yBottomMargin));
+  const uint16_t xMidMargin = ((display.width()/2) + xMargins);
+  const uint16_t yLabel = 40;
+  const uint16_t yCO2 = 80 + yTopMargin;
+  const uint16_t yTempF = 120 + yTopMargin;
+  const uint16_t yHumidity = 180 + yTopMargin;
+  const uint16_t ySparkline = (display.height()/2);
+  const uint16_t sparklineHeight = ((display.height()/2)-(yBottomMargin));
 
   display.clearBuffer();
   display.setTextColor(EPD_BLACK);
@@ -501,21 +518,23 @@ void screenSensors()
   // // draws battery in the lower right corner. -3 in first parameter accounts for battery nub
   // screenHelperBatteryStatus((display.width()-xMargins-batteryBarWidth-3),(display.height()-yBottomMargin-batteryBarHeight),batteryBarWidth,batteryBarHeight);
 
-  // display sparkline
-  screenHelperSparkLine(xMargins,ySparkline,((display.width()/2) - (2 * xMargins)),sparklineHeight);
+  // label
+  display.setFont(&FreeSans12pt7b);
+  display.setCursor(xMidMargin, yLabel);
+  display.print("Air Quality");
 
-  // main line
+  // co2 main line
   display.setFont(&FreeSans12pt7b);
   display.setCursor(xMargins, yCO2);
   display.print("CO");
   display.setCursor(xMargins+50,yCO2);
-  display.print(": " + co2Labels[co2Range(sensorData.ambientCO2)]);
+  display.print(" " + co2Labels[co2Range(sensorData.ambientCO2)]);
   display.setFont(&FreeSans9pt7b);
   display.setCursor(xMargins+35,(yCO2+10));
   display.print("2");
-  // value line
+  // co2 value
   display.setFont();
-  display.setCursor((xMargins+88),(yCO2+7));
+  display.setCursor((xMargins+80),(yCO2+7));
   display.print("(" + String(sensorData.ambientCO2) + ")");
 
   // indoor tempF
@@ -554,7 +573,7 @@ void screenHelperBatteryStatus(uint16_t initialX, uint16_t initialY, uint8_t bar
   }
 }
 
-void screenHelperQRCode(int initialX, int initialY, String url)
+void screenHelperQRCode(uint16_t initialX, uint16_t initialY, String url)
 {
   debugMessage ("screenHelperQRCode begin",1);
   QRCode qrcode;
@@ -569,12 +588,12 @@ void screenHelperQRCode(int initialX, int initialY, String url)
       //If pixel is on, we draw a ps x ps black square
       if(qrcode_getModule(&qrcode, x, y))
       {
-        for(int xi = x*qrCodeScaling; xi < x*qrCodeScaling + qrCodeScaling; xi++)
+        for(uint16_t xi = x*qrCodeScaling; xi < x*qrCodeScaling + qrCodeScaling; xi++)
         {
-          for(int yi= y*qrCodeScaling; yi < y*qrCodeScaling + qrCodeScaling; yi++)
-        // for(int xi = x*qrCodeScaling + 2; xi < x*qrCodeScaling + qrCodeScaling + 2; xi++)
+          for(uint16_t yi= y*qrCodeScaling; yi < y*qrCodeScaling + qrCodeScaling; yi++)
+        // for(uint16_t xi = x*qrCodeScaling + 2; xi < x*qrCodeScaling + qrCodeScaling + 2; xi++)
         // {
-        //   for(int yi= y*qrCodeScaling + 2; yi < y*qrCodeScaling + qrCodeScaling + 2; yi++)
+        //   for(uint16_t yi= y*qrCodeScaling + 2; yi < y*qrCodeScaling + qrCodeScaling + 2; yi++)
           {
             display.writePixel(xi+initialX, yi+initialY, EPD_BLACK);
           }
@@ -863,7 +882,7 @@ void neoPixelCO2()
   debugMessage("neoPixelCO2 begin",1);
   neopixels.clear();
   neopixels.show();
-  for (int i=0;i<neoPixelCount;i++)
+  for (uint8_t i=0;i<neoPixelCount;i++)
   {
       if (sensorData.ambientCO2 < co2Warning)
         neopixels.setPixelColor(i,0,255,0);
@@ -876,8 +895,8 @@ void neoPixelCO2()
   debugMessage("neoPixelCO2 end",1);
 }
 
-void powerDisable(int deepSleepTime)
-// Powers down hardware activated via w() then deep sleep MCU
+void powerDisable(uint16_t deepSleepTime)
+// Powers down hardware then deep sleep MCU
 {
   char errorMessage[256];
 
@@ -926,7 +945,7 @@ uint8_t co2Range(uint16_t value)
     return 2;
 }
 
-void debugMessage(String messageText, int messageLevel)
+void debugMessage(String messageText, uint8_t messageLevel)
 // wraps Serial.println as #define conditional
 {
   #ifdef DEBUG
