@@ -8,9 +8,6 @@
 // hardware and internet configuration parameters
 #include "config.h"
 
-// Utility class for easy handling aggregate sensor data
-#include "measure.h"
-
 // QR code support
 #include "qrcoderm.h"
 
@@ -69,9 +66,6 @@ typedef struct
   //uint8_t rssi;
 } hdweData;
 hdweData hardwareData;
-
-// Utility class used to streamline accumulating sensor values
-Measure totalCO2, totalTemperatureF, totalHumidity;
 
 // int32_t timeLastSensorSample  = -(sensorSampleInterval*1000);  // negative value triggers sensor sample on first iteration of loop()
 uint32_t timeLastSensorSample;
@@ -851,10 +845,6 @@ bool sensorCO2Read()
         sensorData.ambientTemperatureF = (temperature*1.8)+32.0;
         sensorData.ambientHumidity = humidity;
         sensorData.ambientCO2 = co2;
-        // update aggregate information
-        totalTemperatureF.include(sensorData.ambientTemperatureF);
-        totalHumidity.include(sensorData.ambientHumidity);
-        totalCO2.include(sensorData.ambientCO2);
         debugMessage(String("SCD40: ") + sensorData.ambientTemperatureF + "F, " + sensorData.ambientHumidity + "%, " + sensorData.ambientCO2 + " ppm",1);
         status = true;
         break;
