@@ -8,25 +8,24 @@
 // hardware and internet configuration parameters
 #include "config.h"
 
-// Utility class for easy handling aggregate sensor data
-#include "measure.h"
-
 // QR code support
 #include "qrcoderm.h"
 
 // hardware support
 
+#ifndef HARDWARE_SIMULATE
+  // instanstiate SCD4X hardware object
+  #include <SensirionI2cScd4x.h>
+  SensirionI2cScd4x co2Sensor;
+
+  // battery voltage sensor
+  #include <Adafruit_LC709203F.h>
+  Adafruit_LC709203F lc;
+#endif
+
 // neopixels
 #include <Adafruit_NeoPixel.h>
 Adafruit_NeoPixel neopixels = Adafruit_NeoPixel(neoPixelCount, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
-
-// scd40 environment sensor
-#include <SensirionI2CScd4x.h>
-SensirionI2CScd4x co2Sensor;
-
-// battery voltage sensor
-#include <Adafruit_LC709203F.h>
-Adafruit_LC709203F lc;
 
 // button support
 #include <ezButton.h>
@@ -38,15 +37,10 @@ ezButton buttonOne(buttonD1Pin);
 // colors are EPD_WHITE, EPD_BLACK, EPD_GRAY, EPD_LIGHT, EPD_DARK
 ThinkInk_290_Grayscale4_T5 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY);
 
-#include <Fonts/FreeSans9pt7b.h>    // screenCO2
-#include <Fonts/FreeSans12pt7b.h>   // screenAlert, screenName, screenCO2
+#include <Fonts/FreeSans9pt7b.h>    // screenMain
+#include <Fonts/FreeSans12pt7b.h>   // screenAlert, screenName, screenThreeThings
 #include <Fonts/FreeSans18pt7b.h>   // screenThreeThings
-#include <Fonts/FreeSans24pt7b.h>   // screenCO2
-
-#include "Fonts/FreeSerif24pt7b.h"  // screenName
-#include "Fonts/FreeSerif48pt7b.h"  // screenName
-#include "Fonts/FreeSerif18pt7b.h"  // screenMain
-#include "Fonts/FreeSerif12pt7b.h"  // screenMain
+#include <Fonts/FreeSans24pt7b.h>   // screenMain
 
 #include "Fonts/meteocons24pt7b.h"  //screenCO2
 
@@ -68,12 +62,10 @@ typedef struct
 {
   float batteryPercent;
   float batteryVoltage;
+  float batteryTemperatureF;
   //uint8_t rssi;
 } hdweData;
 hdweData hardwareData;
-
-// Utility class used to streamline accumulating sensor values
-Measure totalCO2, totalTemperatureF, totalHumidity;
 
 // int32_t timeLastSensorSample  = -(sensorSampleInterval*1000);  // negative value triggers sensor sample on first iteration of loop()
 uint32_t timeLastSensorSample;
@@ -107,7 +99,7 @@ void setup()
     break;
     case ESP_SLEEP_WAKEUP_EXT1 :
     {
-      int gpioReason = log(esp_sleep_get_ext1_wakeup_status())/log(2);
+      uint16_t gpioReason = log(esp_sleep_get_ext1_wakeup_status())/log(2);
       debugMessage(String("wakeup cause: RTC gpio pin: ") + gpioReason,1);
       // implment switch (gpioReason)
     }
@@ -138,14 +130,15 @@ void setup()
   display.begin(THINKINK_MONO);
   display.setRotation(screenRotation);
   display.setTextWrap(false);
+  display.setTextColor(EPD_BLACK);
   // debugMessage (String("epd: enabled in grayscale with rotation") + screenRotation,1);
   debugMessage(String("epd: enabled in mono with rotation: ") + screenRotation,1);
 
-  // Initialize environmental sensor
+  // Initialize SCD4X
   if (!sensorCO2Init())
   {
-    debugMessage("Environment sensor failed to initialize",1);
-    screenAlert("CO2 sensor?");
+    debugMessage("SCD4X initialization failure",1);
+    screenAlert("No SCD4X");
     // This error often occurs right after a firmware flash and reset.
     // Hardware deep sleep typically resolves it
     powerDisable(hardwareErrorSleepTime);
@@ -166,10 +159,11 @@ void setup()
 void loop()
 {
   buttonOne.loop();
-  if (buttonOne.isReleased())
+  // IMPROVEMENT: check for millis() < XXX for a wakeup button inadvertantly triggering this
+  if (buttonOne.isReleased()) 
   {
     ((screenCurrent + 1) >= screenCount) ? screenCurrent = 0 : screenCurrent ++;
-    debugMessage(String("button 1 press, switch to screen ") + screenCurrent,1);
+    debugMessage(String("button press, switch to screen ") + screenCurrent,1);
     screenUpdate();
   }
 
@@ -204,68 +198,127 @@ void loop()
   }
 }
 
-void screenUpdate() 
+void screenUpdate()
+// Description: Display requested screen
+// Parameters: NA (global)
+// Output: NA (void)
+// Improvement: ?
 {
   neoPixelCO2();
   switch(screenCurrent) {
     case 0:
-      screenMain(nameFirst, nameLast, qrCodeURL);
+      screenMain(badgeNameFirst, badgeNameLast, qrCodeURL);
       break;
     case 1:
-      screenThreeThings();
+      screenThreeThings(badgeFirstThing, badgeSecondThing, badgeThirdThing);
       break;
     case 2:
-      screenCO2();
+      //screenCO2();
+      screenSensors();
       break;
     case 3:
       screenSensors();
       break;
     default:
-      // This shouldn't happen, but if it does...
-      screenMain(nameFirst, nameLast, qrCodeURL);
-      debugMessage("bad screen ID",1);
+      // handle out of range screenCurrent
+      screenMain(badgeNameFirst, badgeNameLast, qrCodeURL);
+      debugMessage("Error: Unexpected screen ID",1);
       break;
   }
 }
 
-void screenAlert(String messageText)
-// Display error message centered on screen
+bool screenAlert(String messageText)
+// Description: Display error message centered on screen, using different font sizes and/or splitting to fit on screen
+// Parameters: String containing error message text
+// Output: NA (void)
+// Improvement: ?
 {
   debugMessage("screenAlert start",1);
 
+  bool status = true;
   int16_t x1, y1;
-  uint16_t width,height;
+  uint16_t largeFontPhraseOneWidth, largeFontPhraseOneHeight;
+  uint16_t smallFontWidth, smallFontHeight;
 
   display.clearBuffer();
-  display.setTextColor(EPD_BLACK);
-  display.setFont(&FreeSans12pt7b);
-  display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &width, &height);
 
-  if (width >= display.width())
+  display.setFont(&FreeSans12pt7b);
+  display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &largeFontPhraseOneWidth, &largeFontPhraseOneHeight);
+  if (largeFontPhraseOneWidth <= (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2))))
   {
-    debugMessage(String("ERROR: screenAlert '") + messageText + "' is " + abs(display.width()-width) + " pixels too long", 1);
+    // fits with large font, display
+    display.setCursor(display.width()/2-largeFontPhraseOneWidth/2,display.height()/2+largeFontPhraseOneHeight/2);
+    display.print(messageText);
   }
-  display.setCursor(display.width()/2-width/2,display.height()/2+height/2);
-  display.print(messageText);
-  //update display
+  else
+  {
+    debugMessage(String("ERROR: screenAlert messageText '") + messageText + "' with large font is " + abs(largeFontPhraseOneWidth - (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2)))) + " pixels too long", 1);
+    // does the string break into two pieces based on a space character?
+    uint8_t spaceLocation;
+    String messageTextPartOne, messageTextPartTwo;
+    uint16_t largeFontPhraseTwoWidth, largeFontPhraseTwoHeight;
+
+    spaceLocation = messageText.indexOf(' ');
+    if (spaceLocation)
+    {
+      // has a space character, will it fit on two lines?
+      messageTextPartOne = messageText.substring(0,spaceLocation);
+      messageTextPartTwo = messageText.substring(spaceLocation+1);
+      display.getTextBounds(messageTextPartOne.c_str(), 0, 0, &x1, &y1, &largeFontPhraseOneWidth, &largeFontPhraseOneHeight);
+      display.getTextBounds(messageTextPartTwo.c_str(), 0, 0, &x1, &y1, &largeFontPhraseTwoWidth, &largeFontPhraseTwoHeight);
+      if ((largeFontPhraseOneWidth <= (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2)))) && (largeFontPhraseTwoWidth <= (display.width()-(display.width()/2-(largeFontPhraseTwoWidth/2)))))
+      {
+        // fits on two lines, display
+        display.setCursor(display.width()/2-largeFontPhraseOneWidth/2,(display.height()/2+largeFontPhraseOneHeight/2)+6);
+        display.print(messageTextPartOne);
+        display.setCursor(display.width()/2-largeFontPhraseOneWidth/2,(display.height()/2+largeFontPhraseOneHeight/2)-18);
+        display.print(messageTextPartTwo);
+      }
+    }
+    debugMessage(String("Message part one with large fonts is ") + largeFontPhraseOneWidth + " pixels wide vs. available " + (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2))) + " pixels",1);
+    debugMessage(String("Message part two with large fonts is ") + largeFontPhraseTwoWidth + " pixels wide vs. available " + (display.width()-(display.width()/2-(largeFontPhraseTwoWidth/2))) + " pixels",1);
+    // at large font size, string doesn't fit even if it can be broken into two lines
+    // does the string fit with small size text?
+    display.setFont(&FreeSans9pt7b);
+    display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
+    if (smallFontWidth <= (display.width()-(display.width()/2-(smallFontWidth/2))))
+    {
+      // fits with small size
+      display.setCursor(display.width()/2-smallFontWidth/2,display.height()/2+smallFontHeight/2);
+      display.print(messageText);
+    }
+    else
+    {
+      debugMessage(String("ERROR: screenAlert messageText '") + messageText + "' with small font is " + abs(smallFontWidth - (display.width()-(display.width()/2-(smallFontWidth/2)))) + " pixels too long", 1);
+      // doesn't fit at any size/line split configuration, display as truncated, large text
+      display.setFont(&FreeSans12pt7b);
+      display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &largeFontPhraseOneWidth, &largeFontPhraseOneHeight);
+      display.setCursor(display.width()/2-largeFontPhraseOneWidth/2,display.height()/2+largeFontPhraseOneHeight/2);
+      display.print(messageText);
+      status = false;
+    }
+  }
   display.display();
   debugMessage("screenAlert end",1);
+  return status;
 }
 
 void screenMain(String firstName, String lastName, String url)
-// Displays first name, QRCode, and CO2 value in vertical orientation
+// Description: Display first and last name, QRCode, and CO2 value in vertical orientation
+// Parameters: 
+// Output: NA (void)
+// Improvement: ?
 {
   debugMessage("screenMain start",1);
 
   // screen layout assists
-  const int xMidMargin = ((display.width()/2) + xMargins);
-  const int yTempF = 36 + yTopMargin;
-  const int yHumidity = 90;
-  const int yCO2 = 40;
+  const uint16_t xMidMargin = ((display.width()/2) + xMargins);
+  const uint16_t yTempF = 36 + yTopMargin;
+  const uint16_t yHumidity = 90;
+  const uint16_t yCO2 = 40;
 
   display.clearBuffer();
 
-  display.setTextColor(EPD_BLACK);
   // name
   display.setFont(&FreeSans24pt7b);
   display.setCursor(xMargins,48);
@@ -276,7 +329,7 @@ void screenMain(String firstName, String lastName, String url)
   // QR code
   screenHelperQRCode(12,98,url);
 
-  //main line
+  // co2 main line
   display.setFont(&FreeSans12pt7b);
   display.setCursor(xMargins, 240);
   display.print("CO");
@@ -285,7 +338,7 @@ void screenMain(String firstName, String lastName, String url)
   display.setFont(&FreeSans9pt7b);
   display.setCursor(xMargins+35,(240+10));
   display.print("2");
-  // value line
+  // co2 value
   display.setFont();
   display.setCursor((xMargins+80),(240+7));
   display.print("(" + String(sensorData.ambientCO2) + ")");
@@ -297,98 +350,242 @@ void screenMain(String firstName, String lastName, String url)
 }
 
 void screenCO2()
-// Display ambient temp, humidity, and CO2 level
+// Description: Display current, high, and low CO2 values plus sparkline in vertical orientation
+// Parameters: 
+// Output: NA (void)
+// Improvement: ?
 {
-  debugMessage("screenCO2 start",1);
-  screenAlert("CO2 detail");
-  // display.clearBuffer();
-  // display.setTextColor(EPD_BLACK);
+//   debugMessage("screenCO2 start",1);
+
+//   // screen layout assists
+//   const uint16_t xMidMargin = ((display.width()/2) - 40);
+//   const uint16_t yCO2Label = 40;
+//   const uint16_t yCO2Ambient = 80;
+//   const uint16_t yCO2High = 120;
+//   const uint16_t yCO2Low = 160;
+//   const uint16_t ySparkline = 220;
+//   const uint16_t sparklineHeight = ((display.height()/2)-(yBottomMargin));
+
+//   display.clearBuffer();
+
+//   // label
+//   display.setFont(&FreeSans24pt7b);
+//   display.setCursor(xMidMargin, yCO2Label);
+//   display.print("CO2");
+
+//   // ambient CO2
+//   display.setFont(&FreeSans12pt7b);
+//   display.setCursor(xMidMargin, yCO2Ambient);
+//   display.print("Current");
+//   display.setFont(&FreeSans24pt7b);
+//   display.setCursor((xMargins),(yCO2Ambient+35));
+//   display.print(sensorData.ambientCO2);
+
+//   // high CO2
+//   display.setFont(&FreeSans12pt7b);
+//   display.setCursor(xMidMargin, yCO2High);
+//   display.print("High");
+//   display.setFont(&FreeSans24pt7b);
+//   display.setCursor((xMargins),(yCO2High+35));
+//   display.print("1200");
+
+//     // low CO2
+//   display.setFont(&FreeSans12pt7b);
+//   display.setCursor(xMidMargin, yCO2Low);
+//   display.print("Low");
+//   display.setFont(&FreeSans24pt7b);
+//   display.setCursor((xMargins),(yCO2Low+35));
+//   display.print("432");
+
+//   // CO2 sparkline
+//   screenHelperSparkLine(xMargins,ySparkline,(display.width() - (2 * xMargins)),display.height()-ySparkline-yTopMargin);
+
+//   // // draws battery in the lower right corner. -3 in first parameter accounts for battery nub
+//   // screenHelperBatteryStatus((display.width()-xMargins-batteryBarWidth-3),(display.height()-yBottomMargin-batteryBarHeight),batteryBarWidth,batteryBarHeight);
+
+//   display.display();
+//   debugMessage("screenCO2 end",1);
+}
+
+void screenThreeThings(String firstThing, String secondThing, String thirdThing)
+// Description: Display three things about the badge owner in vertical orientation
+// Parameters: three strings describing owner
+// Output: NA
+// Improvement: if too long, split into two lines?
+{
+  debugMessage("screenThreeThings start",1);
+
+  int16_t x1, y1;
+  uint16_t largeFontWidth, largeFontHeight;
+  uint16_t smallFontWidth, smallFontHeight;
+
+  display.clearBuffer();
+
+  display.setFont(&FreeSans12pt7b);
+  display.setCursor(xMargins,24);
+  display.print("I love");
+
+  // display firstThing
+  display.setCursor(xMargins,94);
+  display.setFont(&FreeSans18pt7b);
+  display.getTextBounds(firstThing.c_str(), 0, 0, &x1, &y1, &largeFontWidth, &largeFontHeight);
+  if (largeFontWidth >= (display.width()-xMargins))
+  {
+    debugMessage(String("ERROR: firstThing '") + firstThing + "' with large font is " + abs(display.width()-largeFontWidth-xMargins) + " pixels too long", 1);
+    display.setFont(&FreeSans12pt7b);
+    display.getTextBounds(firstThing.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
+    if (smallFontWidth >= (display.width()-xMargins))
+    {
+      // text is too long even if we shrink text size
+      // display it truncated at larger size
+      // IMPROVEMENT: Is it two words we can split?
+      debugMessage(String("ERROR: firstThing '") + firstThing + "' with small font is " + abs(display.width()-smallFontWidth-xMargins) + " pixels too long", 1);
+      display.setFont(&FreeSans18pt7b);
+    }
+  }
+  display.print(firstThing);
+
+  // display secondThing
+  display.setCursor(xMargins,184);
+    display.setFont(&FreeSans18pt7b);
+  display.getTextBounds(secondThing.c_str(), 0, 0, &x1, &y1, &largeFontWidth, &largeFontHeight);
+  if (largeFontWidth >= (display.width()-xMargins))
+  {
+    debugMessage(String("ERROR: secondThing '") + secondThing + "' with large font is " + abs(display.width()-largeFontWidth-xMargins) + " pixels too long", 1);
+    display.setFont(&FreeSans12pt7b);
+    display.getTextBounds(secondThing.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
+    if (smallFontWidth >= (display.width()-xMargins))
+    {
+      // text is too long even if we shrink text size
+      // display it truncated at larger size
+      // IMPROVEMENT: Is it two words we can split?
+      debugMessage(String("ERROR: secondThing '") + secondThing + "' with small font is " + abs(display.width()-smallFontWidth-xMargins) + " pixels too long", 1);
+      display.setFont(&FreeSans18pt7b);
+    }
+  }
+  display.print(secondThing);
+
+  // display thirdThing
+  display.setCursor(xMargins,274);
+  display.setFont(&FreeSans18pt7b);
+  display.getTextBounds(thirdThing.c_str(), 0, 0, &x1, &y1, &largeFontWidth, &largeFontHeight);
+  if (largeFontWidth >= (display.width()-xMargins))
+  {
+    debugMessage(String("ERROR: thirdThing '") + thirdThing + "' with large font is " + abs(display.width()-largeFontWidth-xMargins) + " pixels too long", 1);
+    display.setFont(&FreeSans12pt7b);
+    display.getTextBounds(thirdThing.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
+    if (smallFontWidth >= (display.width()-xMargins))
+    {
+      // text is too long even if we shrink text size
+      // display it truncated at larger size
+      // IMPROVEMENT: Is it two words we can split?
+      debugMessage(String("ERROR: thirdThing '") + thirdThing + "' with small font is " + abs(display.width()-smallFontWidth-xMargins) + " pixels too long", 1);
+      display.setFont(&FreeSans18pt7b);
+    }
+  }
+  display.print(thirdThing);
+
+  display.display();
+  debugMessage("screenThreeThings end",1);
+}
+
+void screenSensors()
+// Description: Display ambient temp, humidity, and CO2 level and sparklines for each in vertical orientation
+// Parameters: NA (globals)
+// Output: NA (void)
+// Improvement: ?
+{
+  debugMessage("screenSensors start",1);
+
+  // screen layout assists
+  const uint16_t xMidMargin = (display.width()/2);
+  const uint16_t yscreenLabel = 20;
+  const uint16_t yCO2Label = 60;
+  const uint16_t yTempLabel = 150;
+  const uint16_t yHumidityLabel = 240;
+  const uint16_t yCO2Value = yCO2Label + 40;
+  const uint16_t yTempValue = yTempLabel + 40;
+  const uint16_t yHumidityValue = yHumidityLabel + 40;
+
+  display.clearBuffer();
   
   // // draws battery in the lower right corner. -3 in first parameter accounts for battery nub
   // screenHelperBatteryStatus((display.width()-xMargins-batteryBarWidth-3),(display.height()-yBottomMargin-batteryBarHeight),batteryBarWidth,batteryBarHeight);
 
-  // // display sparkline
-  // screenHelperSparkLines(xMargins,ySparkline,((display.width()/2) - (2 * xMargins)),sparklineHeight);
+  // label
+  display.setFont(&FreeSans12pt7b);
+  display.setCursor(xMargins, yscreenLabel);
+  display.print("Air Quality");
 
-  // // CO2 level
-  // // calculate CO2 value range in 400ppm bands
-  // int co2range = ((sensorData.ambientCO2[sampleCounter] - 400) / 400);
-  // co2range = constrain(co2range,0,4); // filter CO2 levels above 2400
-
-  // // main line
-  // display.setFont(&FreeSans12pt7b);
-  // display.setCursor(xMargins, yCO2);
-  // display.print("CO");
-  // display.setCursor(xMargins+50,yCO2);
-  // display.print(": " + String(co2Labels[co2range]));
-  // display.setFont(&FreeSans9pt7b);
-  // display.setCursor(xMargins+35,(yCO2+10));
-  // display.print("2");
-  // // value line
-  // display.setFont();
-  // display.setCursor((xMargins+88),(yCO2+7));
-  // display.print("(" + String(sensorData.ambientCO2[sampleCounter]) + ")");
-
-  // // indoor tempF
-  // display.setFont(&FreeSans24pt7b);
-  // display.setCursor(xMidMargin,yTempF);
-  // display.print(String((int)(sensorData.ambientTemperatureF + .5)));
-  // display.setFont(&meteocons24pt7b);
-  // display.print("+");
-
-  // // indoor humidity
-  // display.setFont(&FreeSans24pt7b);
-  // display.setCursor(xMidMargin, yHumidity);
-  // display.print(String((int)(sensorData.ambientHumidity + 0.5)));
-  // // original icon ratio was 5:7?
-  // display.drawBitmap(xMidMargin+60,yHumidity-21,epd_bitmap_humidity_icon_sm4,20,28,EPD_BLACK);
-
-  // display.display();
-  debugMessage("screenCO2 end",1);
-}
-
-void screenThreeThings()
-// Display three things about the badge owner
-{
-  debugMessage("screenThreeThings start",1);
-  display.clearBuffer();
-  display.setTextColor(EPD_BLACK);
+  // co2 main line
   display.setFont(&FreeSans18pt7b);
-  display.setCursor(xMargins,display.height()/4);
-  display.print("Hockey");
-  display.setCursor(xMargins,display.height()/2);
-  display.print("Video games");
-  display.setCursor(xMargins,display.height()*3/4);
-  display.print("Making");
+  display.setCursor(xMidMargin-30, yCO2Label);
+  display.print("CO");
+  display.setFont(&FreeSans9pt7b);
+  display.setCursor(xMidMargin+19,(yCO2Label+5));
+  display.print("2");
+  // co2 value
+  display.setFont(&FreeSans24pt7b);
+  display.setCursor(xMidMargin-55,yCO2Value);
+  display.print(co2Labels[co2Range(sensorData.ambientCO2)]);
+  display.setFont();
+  display.setCursor((xMargins+80),(yCO2Value+7));
+  display.print("(" + String(sensorData.ambientCO2) + ")");
+
+  // indoor tempF
+  // label
+  display.setFont(&FreeSans18pt7b);
+  display.setCursor(xMidMargin-45,yTempLabel);
+  display.print("Temp");
+  // value
+  display.setFont(&FreeSans24pt7b);
+  display.setCursor(xMidMargin-25,yTempValue);
+  display.print(String((int)(sensorData.ambientTemperatureF + .5)));
+  display.setFont(&meteocons24pt7b);
+  display.print("+");
+
+  // indoor humidity
+  //label
+  display.setFont(&FreeSans18pt7b);
+  display.setCursor(xMidMargin-30,yHumidityLabel);
+  display.print("RH");
+  //value
+  display.setFont(&FreeSans24pt7b);
+  display.setCursor(xMidMargin-25, yHumidityValue);
+  display.print(String((int)(sensorData.ambientHumidity + 0.5)));
+  // original icon ratio was 5:7?
+  display.drawBitmap(xMidMargin+35,yHumidityValue-25,epd_bitmap_humidity_icon_sm4,20,28,EPD_BLACK);
 
   display.display();
-  debugMessage("screenThreeThings update completed",1);
-}
-
-void screenSensors()
-{
-  screenAlert("All sensors");
+  debugMessage("screenSensors end",1);
 }
 
 void screenHelperBatteryStatus(uint16_t initialX, uint16_t initialY, uint8_t barWidth, uint8_t barHeight)
 // helper function for screenXXX() routines that draws battery charge %
-{
-  // IMPROVEMENT : Screen dimension boundary checks for passed parameters
-  // IMPROVEMENT : Check for offscreen drawing based on passed parameters
- 
-  if (batteryRead())
+// Description: helper function for screenXXX() routines, displaying battery charge % in a battery icon
+// Parameters:
+// Output: NA (void)
+// IMPROVEMENT : Screen dimension boundary checks for passed parameters
+// IMPROVEMENT : Check for offscreen drawing based on passed parameters
+// IMPROVEMENT: batteryNub isn't placed properly when barHeight is changed from (default) 10 pixels
+{ 
+  if (batteryRead(batteryReadsPerSample))
   {
     // battery nub; width = 3pix, height = 60% of barHeight
     display.fillRect((initialX+barWidth), (initialY+(int(barHeight/5))), 3, (int(barHeight*3/5)), EPD_BLACK);
     // battery border
     display.drawRect(initialX, initialY, barWidth, barHeight, EPD_BLACK);
-    //battery percentage as rectangle fill, 1 pixel inset from the battery border
+    // battery percentage as rectangle fill, 1 pixel inset from the battery border
     display.fillRect((initialX + 2), (initialY + 2), int(0.5+(hardwareData.batteryPercent*((barWidth-4)/100.0))), (barHeight - 4), EPD_BLACK);
+    // DEBUG USE ONLY, display voltage level in the icon, requires changing bar height to 14 pixels
+    // display.setFont(); // switch to generic small font
+    // display.setCursor(initialX +2 ,initialY + 2);
+    // display.print(hardwareData.batteryVoltage);
     debugMessage(String("screenHelperBatteryStatus displayed ") + hardwareData.batteryPercent + "% -> " + int(0.5+(hardwareData.batteryPercent*((barWidth-4)/100.0))) + " of " + (barWidth-4) + " pixels",1);
   }
 }
 
-void screenHelperQRCode(int initialX, int initialY, String url)
+void screenHelperQRCode(uint16_t initialX, uint16_t initialY, String url)
 {
   debugMessage ("screenHelperQRCode begin",1);
   QRCode qrcode;
@@ -403,12 +600,12 @@ void screenHelperQRCode(int initialX, int initialY, String url)
       //If pixel is on, we draw a ps x ps black square
       if(qrcode_getModule(&qrcode, x, y))
       {
-        for(int xi = x*qrCodeScaling; xi < x*qrCodeScaling + qrCodeScaling; xi++)
+        for(uint16_t xi = x*qrCodeScaling; xi < x*qrCodeScaling + qrCodeScaling; xi++)
         {
-          for(int yi= y*qrCodeScaling; yi < y*qrCodeScaling + qrCodeScaling; yi++)
-        // for(int xi = x*qrCodeScaling + 2; xi < x*qrCodeScaling + qrCodeScaling + 2; xi++)
+          for(uint16_t yi= y*qrCodeScaling; yi < y*qrCodeScaling + qrCodeScaling; yi++)
+        // for(uint16_t xi = x*qrCodeScaling + 2; xi < x*qrCodeScaling + qrCodeScaling + 2; xi++)
         // {
-        //   for(int yi= y*qrCodeScaling + 2; yi < y*qrCodeScaling + qrCodeScaling + 2; yi++)
+        //   for(uint16_t yi= y*qrCodeScaling + 2; yi < y*qrCodeScaling + qrCodeScaling + 2; yi++)
           {
             display.writePixel(xi+initialX, yi+initialY, EPD_BLACK);
           }
@@ -420,6 +617,7 @@ void screenHelperQRCode(int initialX, int initialY, String url)
 }
 
 void screenHelperSparkLine(uint16_t initialX, uint16_t initialY, uint16_t xWidth, uint16_t yHeight) {
+  debugMessage("screenHelperSparkLine start",1);
   // // TEST ONLY: load test CO2 values
   // // testSparkLineValues(sensorSampleSize);
 
@@ -446,8 +644,8 @@ void screenHelperSparkLine(uint16_t initialX, uint16_t initialY, uint16_t xWidth
 
   // debugMessage(String("xPixelStep is ") + xPixelStep + ", yPixelStep is " + yPixelStep, 2);
 
-  // // TEST ONLY : sparkline border box
-  // // display.drawRect(initialX,initialY, xWidth,yHeight, GxEPD_BLACK);
+  // TEST ONLY : sparkline border box
+  display.drawRect(initialX,initialY, xWidth,yHeight, EPD_BLACK);
 
   // // determine sparkline x,y values
   // for (uint8_t loop = 0; loop < sensorSampleSize; loop++) {
@@ -460,42 +658,98 @@ void screenHelperSparkLine(uint16_t initialX, uint16_t initialY, uint16_t xWidth
   // for (uint8_t loop = 0; loop < sensorSampleSize; loop++) {
   //   debugMessage(String("X,Y coordinates for CO2 sample ") + loop + " is " + sparkLineX[loop] + "," + sparkLineY[loop], 2);
   // }
-  // debugMessage("screenHelperSparkLine() complete", 1);
+  debugMessage("screenHelperSparkLine end", 1);
 }
 
-bool batteryRead()
-// stores battery information in global hardware data structure
+bool batteryRead(uint8_t reads)
+// Description: sets global battery values from i2c battery monitor or analog pin value (on supported boards)
+// Parameters: integer that sets how many times the analog pin is sampled
+// Output: NA (globals)
+// Improvement: MAX17084 support
 {
-  // check to see if i2C monitor is available
-  if (lc.begin())
-  // Check battery monitoring status
-  {
-    lc.setPackAPA(BATTERY_APA);
-    hardwareData.batteryPercent = lc.cellPercent();
-    hardwareData.batteryVoltage = lc.cellVoltage();
-    debugMessage(String("Battery voltage: ") + hardwareData.batteryVoltage + "v, percent: " + hardwareData.batteryPercent + "%",1);
+  #ifdef HARDWARE_SIMULATE
+    batterySimulate();
     return true;
+  #else
+    // is LC709203F on i2c available?
+    if (lc.begin())
+    {
+      debugMessage("batteryRead using LC709203F monitor",2);
+      lc.setPackAPA(BATTERY_APA);
+      lc.setThermistorB(3950);
+
+      hardwareData.batteryPercent = lc.cellPercent();
+      hardwareData.batteryVoltage = lc.cellVoltage();
+      hardwareData.batteryTemperatureF = 32 + (1.8* lc.getCellTemperature());
+    }
+    else 
+    {
+      // read gpio pin on supported boards for battery level
+      // modified from the Adafruit power management guide
+      debugMessage("batteryRead using GPIO pin",2);
+      float accumulatedVoltage = 0.0f;
+      for (uint8_t loop = 0; loop < reads; loop++)
+      {
+        accumulatedVoltage += analogReadMilliVolts(BATTERY_VOLTAGE_PIN);
+        debugMessage(String("Battery read ") + loop + " is " + analogReadMilliVolts(BATTERY_VOLTAGE_PIN) + "mV",2);
+      }
+      hardwareData.batteryVoltage = accumulatedVoltage/reads; // we now have the average reading
+      // convert into volts  
+      hardwareData.batteryVoltage *= 2;    // we divided by 2, so multiply back
+      hardwareData.batteryVoltage /= 1000; // convert to volts!
+      hardwareData.batteryPercent = batteryGetChargeLevel(hardwareData.batteryVoltage);
+    }
+    if (hardwareData.batteryVoltage>batteryVoltageTable[0]) {
+      debugMessage(String("Battery voltage: ") + hardwareData.batteryVoltage + "v, percent: " + hardwareData.batteryPercent + "%", 1);
+      return true;
+    }
+    else
+      return false;
+  #endif
+}
+
+uint8_t batteryGetChargeLevel(float volts)
+// Description: sets global battery values from i2c battery monitor or analog pin value (on supported boards)
+// Parameters: battery voltage as float
+// Output: battery percentage as int (0-100)
+// Improvement: NA
+{
+  uint8_t idx = 50;
+  uint8_t prev = 0;
+  uint8_t half = 0;
+  if (volts >= 4.2)
+    return 100;
+  if (volts <= 3.2)
+    return 0;
+  while (true) {
+    half = abs(idx - prev) / 2;
+    prev = idx;
+    if (volts >= batteryVoltageTable[idx]) {
+      idx = idx + half;
+    } else {
+      idx = idx - half;
+    }
+    if (prev == idx) {
+      break;
+    }
   }
-  else
-  {
-    debugMessage("Did not detect i2c battery monitor",1);
-    return false;
-  }
+  debugMessage(String("batteryGetChargeLevel returning ") + idx + " percent", 1);
+  return idx;
 }
 
 bool sensorCO2Init()
 // initializes CO2 sensor to read
 {
-  #ifdef SENSOR_SIMULATE
+  #ifdef HARDWARE_SIMULATE
     return true;
  #else
     char errorMessage[256];
     uint16_t error;
 
     Wire.begin();
-    co2Sensor.begin(Wire);
+    co2Sensor.begin(Wire, SCD41_I2C_ADDR_62);
 
-    // Question : needed for MagTag version, but not ESP32V2?!
+    // needed for Adafruit MagTag, but not ESP32V2?
     co2Sensor.wakeUp();
 
     // stop potentially previously started measurement.
@@ -542,36 +796,32 @@ bool sensorCO2Init()
 }
 
 bool sensorCO2Read()
-// DescriptionSets global environment values from SCD40 sensor
+// Description: Sets global environment values from SCD40 sensor
 // Parameters: none
 // Output : true if successful read, false if not
 // Improvement : This routine needs to return FALSE after XX read fails
 {
-  #ifdef SENSOR_SIMULATE
+  #ifdef HARDWARE_SIMULATE
     sensorCO2Simulate();
     debugMessage(String("SIMULATED SCD40: ") + sensorData.ambientTemperatureF + "F, " + sensorData.ambientHumidity + "%, " + sensorData.ambientCO2 + " ppm",1);
   #else
     char errorMessage[256];
-    bool status;
+    bool status = false;
     uint16_t co2 = 0;
     float temperature = 0.0f;
     float humidity = 0.0f;
     uint16_t error;
 
     debugMessage("CO2 sensor read initiated",1);
-    status = false;
     while(!status) {
       // Is data ready to be read?
       bool isDataReady = false;
-      error = co2Sensor.getDataReadyFlag(isDataReady);
+      error = co2Sensor.getDataReadyStatus(isDataReady);
       if (error) {
           errorToString(error, errorMessage, 256);
           debugMessage(String("Error trying to execute getDataReadyFlag(): ") + errorMessage,1);
           continue; // Back to the top of the loop
       }
-      //debugMessage("CO2 sensor data available",2);
-      // wonder if a small delay here would remove the prevalance of error messages from the next if block
-
       error = co2Sensor.readMeasurement(co2, temperature, humidity);
       if (error) {
           errorToString(error, errorMessage, 256);
@@ -590,19 +840,38 @@ bool sensorCO2Read()
         sensorData.ambientTemperatureF = (temperature*1.8)+32.0;
         sensorData.ambientHumidity = humidity;
         sensorData.ambientCO2 = co2;
-        // update aggregate information
-        totalTemperatureF.include(sensorData.ambientTemperatureF);
-        totalHumidity.include(sensorData.ambientHumidity);
-        totalCO2.include(sensorData.ambientCO2);
         debugMessage(String("SCD40: ") + sensorData.ambientTemperatureF + "F, " + sensorData.ambientHumidity + "%, " + sensorData.ambientCO2 + " ppm",1);
         status = true;
         break;
       }
-    delay(100); // why is this needed, sensor issue?
+    delay(100); // reduces readMeasurement() Not enough data received errors
     }
   #endif
   return(status);
 }
+
+#ifdef HARDWARE_SIMULATE
+  void sensorCO2Simulate()
+  // Description: Simulate temperature, humidity, and CO2 data from SCD40 sensor
+  // Parameters: NA (globals)
+  // Output : NA
+  // Improvement: implement stable, rapid rise and fall 
+  {
+    sensorData.ambientTemperatureF = (random(sensorTempMinF,sensorTempMaxF) / 100.0);
+    sensorData.ambientHumidity = random(sensorHumidityMin,sensorHumidityMax) / 100.0;
+    sensorData.ambientCO2 = random(sensorCO2Min, sensorCO2Max);
+    debugMessage(String("SIMULATED SCD40: ") + sensorData.ambientTemperatureF + "F, " + sensorData.ambientHumidity + "%, " + sensorData.ambientCO2 + " ppm",1);
+  }
+
+  void batterySimulate()
+  // Simulate battery data
+  // IMPROVEMENT: Simulate battery below SCD40 required level
+  {
+    hardwareData.batteryVoltage = random(batterySimVoltageMin, batterySimVoltageMax) / 100.00;
+    hardwareData.batteryPercent = batteryGetChargeLevel(hardwareData.batteryVoltage);
+    debugMessage(String("SIMULATED Battery voltage: ") + hardwareData.batteryVoltage + "v, percent: " + hardwareData.batteryPercent + "%", 1);  
+  }
+#endif
 
 void powerNeoPixelEnable()
 // enables MagTag neopixels
@@ -624,7 +893,7 @@ void neoPixelCO2()
   debugMessage("neoPixelCO2 begin",1);
   neopixels.clear();
   neopixels.show();
-  for (int i=0;i<neoPixelCount;i++)
+  for (uint8_t i=0;i<neoPixelCount;i++)
   {
       if (sensorData.ambientCO2 < co2Warning)
         neopixels.setPixelColor(i,0,255,0);
@@ -637,8 +906,8 @@ void neoPixelCO2()
   debugMessage("neoPixelCO2 end",1);
 }
 
-void powerDisable(int deepSleepTime)
-// Powers down hardware activated via w() then deep sleep MCU
+void powerDisable(uint16_t deepSleepTime)
+// Powers down hardware then deep sleep MCU
 {
   char errorMessage[256];
 
@@ -668,7 +937,7 @@ void powerDisable(int deepSleepTime)
   // esp_sleep_enable_ext1_wakeup(BUTTON_PIN_BITMASK,ESP_EXT1_WAKEUP_ANY_HIGH);
 
   // Using external trigger ext0 to support one button interupt
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_14,0);  //1 = High, 0 = Low
+  esp_sleep_enable_ext0_wakeup(WAKE_FROM_SLEEP_PIN,0);  //1 = High, 0 = Low
 
   // ESP32 timer based deep sleep
   esp_sleep_enable_timer_wakeup(deepSleepTime*1000000); // ESP microsecond modifier
@@ -687,7 +956,7 @@ uint8_t co2Range(uint16_t value)
     return 2;
 }
 
-void debugMessage(String messageText, int messageLevel)
+void debugMessage(String messageText, uint8_t messageLevel)
 // wraps Serial.println as #define conditional
 {
   #ifdef DEBUG
