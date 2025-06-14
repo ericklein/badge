@@ -58,7 +58,7 @@ const String qrCodeURL 	= "https://www.linkedin.com/in/ericklein";
 // 0 orients horizontally with neopixels on top
 // 1 orients vertically with flex cable as top
 const uint8_t screenRotation = 1; // rotation 1 = 0,0 is away from flex cable, right aligned with flex cable label
-const uint8_t screenCount = 4;
+const uint8_t screenCount = 3;
 const uint8_t screenSwapInterval = 30; // in seconds
 
 // screen layout assists
@@ -130,5 +130,5 @@ const uint16_t sensorTempCOffset = 0; // in C
 
 // Sleep timers
 const uint8_t hardwareErrorSleepTime = 10; // in seconds
-const uint16_t sleepInterval = 120; // in seconds
+const uint16_t sleepInterval = screenCount * 30; // 30 seconds for each screen before sleep
 const uint16_t sleepTime = 300; // in seconds

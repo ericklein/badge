@@ -211,7 +211,8 @@ void screenUpdate()
       screenThreeThings(badgeFirstThing, badgeSecondThing, badgeThirdThing);
       break;
     case 2:
-      screenCO2();
+      //screenCO2();
+      screenSensors();
       break;
     case 3:
       screenSensors();
@@ -354,57 +355,57 @@ void screenCO2()
 // Output: NA (void)
 // Improvement: ?
 {
-  debugMessage("screenCO2 start",1);
+//   debugMessage("screenCO2 start",1);
 
-  // screen layout assists
-  const uint16_t xMidMargin = ((display.width()/2) - 40);
-  const uint16_t yCO2Label = 40;
-  const uint16_t yCO2Ambient = 80;
-  const uint16_t yCO2High = 120;
-  const uint16_t yCO2Low = 160;
-  const uint16_t ySparkline = 220;
-  const uint16_t sparklineHeight = ((display.height()/2)-(yBottomMargin));
+//   // screen layout assists
+//   const uint16_t xMidMargin = ((display.width()/2) - 40);
+//   const uint16_t yCO2Label = 40;
+//   const uint16_t yCO2Ambient = 80;
+//   const uint16_t yCO2High = 120;
+//   const uint16_t yCO2Low = 160;
+//   const uint16_t ySparkline = 220;
+//   const uint16_t sparklineHeight = ((display.height()/2)-(yBottomMargin));
 
-  display.clearBuffer();
-  display.setTextColor(EPD_BLACK);
+//   display.clearBuffer();
+//   display.setTextColor(EPD_BLACK);
 
-  // label
-  display.setFont(&FreeSans24pt7b);
-  display.setCursor(xMidMargin, yCO2Label);
-  display.print("CO2");
+//   // label
+//   display.setFont(&FreeSans24pt7b);
+//   display.setCursor(xMidMargin, yCO2Label);
+//   display.print("CO2");
 
-  // ambient CO2
-  display.setFont(&FreeSans12pt7b);
-  display.setCursor(xMidMargin, yCO2Ambient);
-  display.print("Current");
-  display.setFont(&FreeSans24pt7b);
-  display.setCursor((xMargins),(yCO2Ambient+35));
-  display.print(sensorData.ambientCO2);
+//   // ambient CO2
+//   display.setFont(&FreeSans12pt7b);
+//   display.setCursor(xMidMargin, yCO2Ambient);
+//   display.print("Current");
+//   display.setFont(&FreeSans24pt7b);
+//   display.setCursor((xMargins),(yCO2Ambient+35));
+//   display.print(sensorData.ambientCO2);
 
-  // high CO2
-  display.setFont(&FreeSans12pt7b);
-  display.setCursor(xMidMargin, yCO2High);
-  display.print("High");
-  display.setFont(&FreeSans24pt7b);
-  display.setCursor((xMargins),(yCO2High+35));
-  display.print("1200");
+//   // high CO2
+//   display.setFont(&FreeSans12pt7b);
+//   display.setCursor(xMidMargin, yCO2High);
+//   display.print("High");
+//   display.setFont(&FreeSans24pt7b);
+//   display.setCursor((xMargins),(yCO2High+35));
+//   display.print("1200");
 
-    // low CO2
-  display.setFont(&FreeSans12pt7b);
-  display.setCursor(xMidMargin, yCO2Low);
-  display.print("Low");
-  display.setFont(&FreeSans24pt7b);
-  display.setCursor((xMargins),(yCO2Low+35));
-  display.print("432");
+//     // low CO2
+//   display.setFont(&FreeSans12pt7b);
+//   display.setCursor(xMidMargin, yCO2Low);
+//   display.print("Low");
+//   display.setFont(&FreeSans24pt7b);
+//   display.setCursor((xMargins),(yCO2Low+35));
+//   display.print("432");
 
-  // CO2 sparkline
-  screenHelperSparkLine(xMargins,ySparkline,(display.width() - (2 * xMargins)),display.height()-ySparkline-yTopMargin);
+//   // CO2 sparkline
+//   screenHelperSparkLine(xMargins,ySparkline,(display.width() - (2 * xMargins)),display.height()-ySparkline-yTopMargin);
 
-  // // draws battery in the lower right corner. -3 in first parameter accounts for battery nub
-  // screenHelperBatteryStatus((display.width()-xMargins-batteryBarWidth-3),(display.height()-yBottomMargin-batteryBarHeight),batteryBarWidth,batteryBarHeight);
+//   // // draws battery in the lower right corner. -3 in first parameter accounts for battery nub
+//   // screenHelperBatteryStatus((display.width()-xMargins-batteryBarWidth-3),(display.height()-yBottomMargin-batteryBarHeight),batteryBarWidth,batteryBarHeight);
 
-  display.display();
-  debugMessage("screenCO2 end",1);
+//   display.display();
+//   debugMessage("screenCO2 end",1);
 }
 
 void screenThreeThings(String firstThing, String secondThing, String thirdThing)
