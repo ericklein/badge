@@ -73,12 +73,15 @@ const uint8_t batteryBarHeight = 10;
 const uint8_t neoPixelCount = 4;
 const uint8_t neoPixelBrightness = 30;
 
-//Battery 
+// Battery 
 // analog pin used to reading battery voltage
 // #define BATTERY_VOLTAGE_PIN A13 // Adafruit Feather ESP32V2
+// #define BATTERY_VOLTAGE_PIN A7 // Adafruit Feather M0 Express, pin 9
 #define BATTERY_VOLTAGE_PIN 04 // Adafruit MagTag
+
 // number of analog pin reads sampled to average battery voltage
 const uint8_t   batteryReadsPerSample = 5;
+
 // battery charge level lookup table
 const float batteryVoltageTable[101] = {
   3.200,  3.250,  3.300,  3.350,  3.400,  3.450,
@@ -132,4 +135,8 @@ const uint16_t sensorTempCOffset = 0; // in C
 // Sleep timers
 const uint8_t hardwareErrorSleepTime = 10; // in seconds
 const uint16_t sleepInterval = screenCount * 30; // 30 seconds for each screen before sleep
-const uint16_t sleepTime = 300; // in seconds
+#ifdef DEBUG
+  const uint16_t sleepTime = 60; // in seconds
+#else
+  const uint16_t sleepTime = 300; // in seconds
+#endif  

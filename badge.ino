@@ -130,6 +130,7 @@ void setup()
   display.begin(THINKINK_MONO);
   display.setRotation(screenRotation);
   display.setTextWrap(false);
+  display.setTextColor(EPD_BLACK);
   // debugMessage (String("epd: enabled in grayscale with rotation") + screenRotation,1);
   debugMessage(String("epd: enabled in mono with rotation: ") + screenRotation,1);
 
@@ -240,7 +241,6 @@ bool screenAlert(String messageText)
   uint16_t smallFontWidth, smallFontHeight;
 
   display.clearBuffer();
-  display.setTextColor(EPD_BLACK);
 
   display.setFont(&FreeSans12pt7b);
   display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &largeFontPhraseOneWidth, &largeFontPhraseOneHeight);
@@ -319,7 +319,6 @@ void screenMain(String firstName, String lastName, String url)
 
   display.clearBuffer();
 
-  display.setTextColor(EPD_BLACK);
   // name
   display.setFont(&FreeSans24pt7b);
   display.setCursor(xMargins,48);
@@ -368,7 +367,6 @@ void screenCO2()
 //   const uint16_t sparklineHeight = ((display.height()/2)-(yBottomMargin));
 
 //   display.clearBuffer();
-//   display.setTextColor(EPD_BLACK);
 
 //   // label
 //   display.setFont(&FreeSans24pt7b);
@@ -422,7 +420,6 @@ void screenThreeThings(String firstThing, String secondThing, String thirdThing)
   uint16_t smallFontWidth, smallFontHeight;
 
   display.clearBuffer();
-  display.setTextColor(EPD_BLACK);
 
   display.setFont(&FreeSans12pt7b);
   display.setCursor(xMargins,24);
@@ -502,16 +499,15 @@ void screenSensors()
 
   // screen layout assists
   const uint16_t xMidMargin = (display.width()/2);
-  const uint16_t yscreenLabel = 40;
-  const uint16_t yCO2Label = 80;
-  const uint16_t yTempLabel = 120;
-  const uint16_t yHumidityLabel = 180;
-  const uint16_t yCO2Value = yscreenLabel + 24;
-  const uint16_t yTempValue = yTempLabel + 24;
-  const uint16_t yHumidityValue = yHumidityLabel + 24;
+  const uint16_t yscreenLabel = 20;
+  const uint16_t yCO2Label = 60;
+  const uint16_t yTempLabel = 150;
+  const uint16_t yHumidityLabel = 240;
+  const uint16_t yCO2Value = yCO2Label + 40;
+  const uint16_t yTempValue = yTempLabel + 40;
+  const uint16_t yHumidityValue = yHumidityLabel + 40;
 
   display.clearBuffer();
-  display.setTextColor(EPD_BLACK);
   
   // // draws battery in the lower right corner. -3 in first parameter accounts for battery nub
   // screenHelperBatteryStatus((display.width()-xMargins-batteryBarWidth-3),(display.height()-yBottomMargin-batteryBarHeight),batteryBarWidth,batteryBarHeight);
@@ -523,13 +519,14 @@ void screenSensors()
 
   // co2 main line
   display.setFont(&FreeSans18pt7b);
-  display.setCursor(xMidMargin, yCO2Label);
+  display.setCursor(xMidMargin-30, yCO2Label);
   display.print("CO");
   display.setFont(&FreeSans9pt7b);
-  display.setCursor(xMidMargin+35,(yCO2Label+10));
+  display.setCursor(xMidMargin+19,(yCO2Label+5));
   display.print("2");
   // co2 value
-  display.setCursor(xMidMargin,yCO2Value);
+  display.setFont(&FreeSans24pt7b);
+  display.setCursor(xMidMargin-55,yCO2Value);
   display.print(co2Labels[co2Range(sensorData.ambientCO2)]);
   display.setFont();
   display.setCursor((xMargins+80),(yCO2Value+7));
@@ -538,11 +535,11 @@ void screenSensors()
   // indoor tempF
   // label
   display.setFont(&FreeSans18pt7b);
-  display.setCursor(xMidMargin,yTempLabel);
+  display.setCursor(xMidMargin-45,yTempLabel);
   display.print("Temp");
   // value
   display.setFont(&FreeSans24pt7b);
-  display.setCursor(xMidMargin,yTempValue);
+  display.setCursor(xMidMargin-25,yTempValue);
   display.print(String((int)(sensorData.ambientTemperatureF + .5)));
   display.setFont(&meteocons24pt7b);
   display.print("+");
@@ -550,14 +547,14 @@ void screenSensors()
   // indoor humidity
   //label
   display.setFont(&FreeSans18pt7b);
-  display.setCursor(xMidMargin,yHumidityLabel);
-  display.print("Temp");
+  display.setCursor(xMidMargin-30,yHumidityLabel);
+  display.print("RH");
   //value
   display.setFont(&FreeSans24pt7b);
-  display.setCursor(xMidMargin, yHumidityValue);
+  display.setCursor(xMidMargin-25, yHumidityValue);
   display.print(String((int)(sensorData.ambientHumidity + 0.5)));
   // original icon ratio was 5:7?
-  display.drawBitmap(xMidMargin+60,yHumidityValue-21,epd_bitmap_humidity_icon_sm4,20,28,EPD_BLACK);
+  display.drawBitmap(xMidMargin+35,yHumidityValue-25,epd_bitmap_humidity_icon_sm4,20,28,EPD_BLACK);
 
   display.display();
   debugMessage("screenSensors end",1);
@@ -702,7 +699,7 @@ bool batteryRead(uint8_t reads)
       hardwareData.batteryVoltage /= 1000; // convert to volts!
       hardwareData.batteryPercent = batteryGetChargeLevel(hardwareData.batteryVoltage);
     }
-    if (hardwareData.batteryVoltage) {
+    if (hardwareData.batteryVoltage>batteryVoltageTable[0]) {
       debugMessage(String("Battery voltage: ") + hardwareData.batteryVoltage + "v, percent: " + hardwareData.batteryPercent + "%", 1);
       return true;
     }
