@@ -15,8 +15,8 @@
 
 #ifndef HARDWARE_SIMULATE
   // instanstiate SCD4X hardware object
-  #include <SensirionI2CScd4x.h>
-  SensirionI2CScd4x co2Sensor;
+  #include <SensirionI2cScd4x.h>
+  SensirionI2cScd4x co2Sensor;
 
   // battery voltage sensor
   #include <Adafruit_LC709203F.h>
@@ -158,10 +158,11 @@ void setup()
 void loop()
 {
   buttonOne.loop();
-  if (buttonOne.isReleased())
+  // IMPROVEMENT: check for millis() < XXX for a wakeup button inadvertantly triggering this
+  if (buttonOne.isReleased()) 
   {
     ((screenCurrent + 1) >= screenCount) ? screenCurrent = 0 : screenCurrent ++;
-    debugMessage(String("button 1 press, switch to screen ") + screenCurrent,1);
+    debugMessage(String("button press, switch to screen ") + screenCurrent,1);
     screenUpdate();
   }
 
@@ -749,9 +750,9 @@ bool sensorCO2Init()
     uint16_t error;
 
     Wire.begin();
-    co2Sensor.begin(Wire);
+    co2Sensor.begin(Wire, SCD41_I2C_ADDR_62);
 
-    // Question : needed for MagTag version, but not ESP32V2?!
+    // needed for Adafruit MagTag, but not ESP32V2?
     co2Sensor.wakeUp();
 
     // stop potentially previously started measurement.
@@ -808,26 +809,22 @@ bool sensorCO2Read()
     debugMessage(String("SIMULATED SCD40: ") + sensorData.ambientTemperatureF + "F, " + sensorData.ambientHumidity + "%, " + sensorData.ambientCO2 + " ppm",1);
   #else
     char errorMessage[256];
-    bool status;
+    bool status = false;
     uint16_t co2 = 0;
     float temperature = 0.0f;
     float humidity = 0.0f;
     uint16_t error;
 
     debugMessage("CO2 sensor read initiated",1);
-    status = false;
     while(!status) {
       // Is data ready to be read?
       bool isDataReady = false;
-      error = co2Sensor.getDataReadyFlag(isDataReady);
+      error = co2Sensor.getDataReadyStatus(isDataReady);
       if (error) {
           errorToString(error, errorMessage, 256);
           debugMessage(String("Error trying to execute getDataReadyFlag(): ") + errorMessage,1);
           continue; // Back to the top of the loop
       }
-      //debugMessage("CO2 sensor data available",2);
-      // wonder if a small delay here would remove the prevalance of error messages from the next if block
-
       error = co2Sensor.readMeasurement(co2, temperature, humidity);
       if (error) {
           errorToString(error, errorMessage, 256);
@@ -850,7 +847,7 @@ bool sensorCO2Read()
         status = true;
         break;
       }
-    delay(100); // why is this needed, sensor issue?
+    delay(100); // reduces readMeasurement() Not enough data received errors
     }
   #endif
   return(status);
@@ -943,7 +940,7 @@ void powerDisable(uint16_t deepSleepTime)
   // esp_sleep_enable_ext1_wakeup(BUTTON_PIN_BITMASK,ESP_EXT1_WAKEUP_ANY_HIGH);
 
   // Using external trigger ext0 to support one button interupt
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_14,0);  //1 = High, 0 = Low
+  esp_sleep_enable_ext0_wakeup(WAKE_FROM_SLEEP_PIN,0);  //1 = High, 0 = Low
 
   // ESP32 timer based deep sleep
   esp_sleep_enable_timer_wakeup(deepSleepTime*1000000); // ESP microsecond modifier

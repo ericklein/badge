@@ -100,8 +100,9 @@ const float batteryVoltageTable[101] = {
   4.156,  4.167,  4.178,  4.189,  4.200 };
 
 // Buttons
-const uint8_t buttonD1Pin = 11;
+const uint8_t buttonD1Pin = 14;
 const uint16_t buttonDebounceDelay = 50; // time in milliseconds to debounce button
+#define WAKE_FROM_SLEEP_PIN GPIO_NUM_14
 
 // Simulation boundary values
 #ifdef HARDWARE_SIMULATE
