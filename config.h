@@ -70,8 +70,8 @@ const uint8_t batteryBarHeight = 10;
 // const uint8_t batteryBarHeight = 14; // larger to display debug voltage text
 
 // MagTag neopixel configuration
-const uint8_t neoPixelCount = 4;
-const uint8_t neoPixelBrightness = 30;
+const uint8_t neoPixelCount = 3;
+const uint8_t neoPixelBrightness = 25;
 
 // Battery 
 // analog pin used to reading battery voltage
@@ -122,6 +122,8 @@ const uint16_t buttonDebounceDelay = 50; // time in milliseconds to debounce but
 #else
   const uint16_t sensorSampleInterval = 180;
 #endif
+
+const uint8_t co2SensorReadFailureLimit = 20;
 
 const uint16_t co2Warning = 800; // Associated with "OK"
 const uint16_t co2Alarm = 1000; // Associated with "Poor"

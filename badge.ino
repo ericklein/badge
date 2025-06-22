@@ -146,6 +146,10 @@ void setup()
 
   buttonOne.setDebounceTime(buttonDebounceDelay);
 
+  sensorData.ambientTemperatureF = 0.0f;
+  sensorData.ambientHumidity = 0.0f;
+  sensorData.ambientCO2 = 0;
+
   // first tme screen draw
   if (!sensorCO2Read())
   {
@@ -799,7 +803,7 @@ bool sensorCO2Read()
 // Description: Sets global environment values from SCD40 sensor
 // Parameters: none
 // Output : true if successful read, false if not
-// Improvement : This routine needs to return FALSE after XX read fails
+// Improvement : NA
 {
   #ifdef HARDWARE_SIMULATE
     sensorCO2Simulate();
@@ -811,9 +815,13 @@ bool sensorCO2Read()
     float temperature = 0.0f;
     float humidity = 0.0f;
     uint16_t error;
+    uint8_t errorCount = 0;
 
     debugMessage("CO2 sensor read initiated",1);
     while(!status) {
+      errorCount++;
+      if (errorCount>co2SensorReadFailureLimit)
+        break;
       // Is data ready to be read?
       bool isDataReady = false;
       error = co2Sensor.getDataReadyStatus(isDataReady);
