@@ -135,7 +135,7 @@ const uint16_t sensorCO2Min =      400;
 const uint16_t sensorCO2Max =      2000;
 
 // Sleep timers
-const uint32_t hardwareErrorSleepTimeμS = 10000000; // in seconds
+const uint32_t hardwareErrorSleepTimeμS = 10000000;  // sleep time if hardware error occurs
 const uint32_t sleepIntervalMS = screenCount * 30000;
 #ifdef DEBUG
   const uint32_t sleepTimeμS = 60000000;
