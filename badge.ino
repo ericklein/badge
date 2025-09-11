@@ -5,11 +5,8 @@
   See README.md for target information and revision history
 */
 
-// hardware and internet configuration parameters
-#include "config.h"
-
-// QR code support
-#include "qrcoderm.h"
+#include "config.h"   // hardware and internet configuration parameters
+#include "qrcoderm.h" // QR code support
 
 // hardware support
 
@@ -37,15 +34,13 @@ ezButton buttonOne(buttonD1Pin);
 // colors are EPD_WHITE, EPD_BLACK, EPD_GRAY, EPD_LIGHT, EPD_DARK
 ThinkInk_290_Grayscale4_T5 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY);
 
+// fonts and glyphs
 #include <Fonts/FreeSans9pt7b.h>    // screenMain
 #include <Fonts/FreeSans12pt7b.h>   // screenAlert, screenName, screenThreeThings
 #include <Fonts/FreeSans18pt7b.h>   // screenThreeThings
 #include <Fonts/FreeSans24pt7b.h>   // screenMain
-
-#include "Fonts/meteocons24pt7b.h"  //screenCO2
-
-// Special glyphs for screenCO2
-#include "Fonts/glyphs.h"
+#include "Fonts/meteocons24pt7b.h"  // screenCO2
+#include "Fonts/glyphs.h"           // screenCO2
 
 // global variables
 
@@ -145,14 +140,13 @@ void setup()
 
   buttonOne.setDebounceTime(buttonDebounceDelay);
 
-  sensorData.ambientTemperatureF = 0.0f;
-  sensorData.ambientHumidity = 0.0f;
-  sensorData.ambientCO2 = 0;
-
   // first tme screen draw
   if (!sensorCO2Read())
   {
     screenAlert("CO2 read fail");
+    sensorData.ambientTemperatureF = 0.0f;
+    sensorData.ambientHumidity = 0.0f;
+    sensorData.ambientCO2 = 0;
   }
   screenUpdate();
   timeLastScreenSwapMS = millis();
@@ -236,74 +230,78 @@ bool screenAlert(String messageText)
 // Output: NA (void)
 // Improvement: ?
 {
-  debugMessage("screenAlert start",1);
-
-  bool status = true;
+  bool success = false;
   int16_t x1, y1;
   uint16_t largeFontPhraseOneWidth, largeFontPhraseOneHeight;
-  uint16_t smallFontWidth, smallFontHeight;
+
+  debugMessage("screenAlert start",1);
 
   display.clearBuffer();
 
+  debugMessage(String("screenAlert text is '") + messageText + "'",2);
+
+  // does message fit on one line?
   display.setFont(&FreeSans12pt7b);
   display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &largeFontPhraseOneWidth, &largeFontPhraseOneHeight);
-  if (largeFontPhraseOneWidth <= (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2))))
-  {
+  if (largeFontPhraseOneWidth <= (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2)))) {
     // fits with large font, display
-    display.setCursor(display.width()/2-largeFontPhraseOneWidth/2,display.height()/2+largeFontPhraseOneHeight/2);
+    display.setCursor(((display.width()/2)-(largeFontPhraseOneWidth/2)),((display.height()/2)+(largeFontPhraseOneHeight/2)));
     display.print(messageText);
+    success = true;
   }
-  else
-  {
-    debugMessage(String("ERROR: screenAlert messageText '") + messageText + "' with large font is " + abs(largeFontPhraseOneWidth - (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2)))) + " pixels too long", 1);
+  else {
+    // does message fit on two lines?
+    debugMessage(String("text with large font is ") + abs(largeFontPhraseOneWidth - (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2)))) + " pixels too long, trying 2 lines", 1);
     // does the string break into two pieces based on a space character?
     uint8_t spaceLocation;
     String messageTextPartOne, messageTextPartTwo;
     uint16_t largeFontPhraseTwoWidth, largeFontPhraseTwoHeight;
 
     spaceLocation = messageText.indexOf(' ');
-    if (spaceLocation)
-    {
-      // has a space character, will it fit on two lines?
+    if (spaceLocation) {
+      // has a space character, measure two lines
       messageTextPartOne = messageText.substring(0,spaceLocation);
       messageTextPartTwo = messageText.substring(spaceLocation+1);
       display.getTextBounds(messageTextPartOne.c_str(), 0, 0, &x1, &y1, &largeFontPhraseOneWidth, &largeFontPhraseOneHeight);
       display.getTextBounds(messageTextPartTwo.c_str(), 0, 0, &x1, &y1, &largeFontPhraseTwoWidth, &largeFontPhraseTwoHeight);
-      if ((largeFontPhraseOneWidth <= (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2)))) && (largeFontPhraseTwoWidth <= (display.width()-(display.width()/2-(largeFontPhraseTwoWidth/2)))))
-      {
+      debugMessage(String("Message part one with large font is ") + largeFontPhraseOneWidth + " pixels wide",2);
+      debugMessage(String("Message part two with large font is ") + largeFontPhraseTwoWidth + " pixels wide",2);
+    }
+    else {
+      debugMessage("there is no space in message to break message into 2 lines",2);
+    }
+    if (spaceLocation && (largeFontPhraseOneWidth <= (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2)))) && (largeFontPhraseTwoWidth <= (display.width()-(display.width()/2-(largeFontPhraseTwoWidth/2))))) {
         // fits on two lines, display
-        display.setCursor(display.width()/2-largeFontPhraseOneWidth/2,(display.height()/2+largeFontPhraseOneHeight/2)+6);
+        display.setCursor(((display.width()/2)-(largeFontPhraseOneWidth/2)),(display.height()/2+largeFontPhraseOneHeight/2)-25);
         display.print(messageTextPartOne);
-        display.setCursor(display.width()/2-largeFontPhraseOneWidth/2,(display.height()/2+largeFontPhraseOneHeight/2)-18);
+        display.setCursor(((display.width()/2)-(largeFontPhraseTwoWidth/2)),(display.height()/2+largeFontPhraseTwoHeight/2)+25);
         display.print(messageTextPartTwo);
+        success = true;
+    }
+    else {
+      // does message fit on one line with small text?
+      debugMessage("couldn't break text into 2 lines or one line is too long, trying small text",1);
+      uint16_t smallFontWidth, smallFontHeight;
+      display.setFont(&FreeSans9pt7b);
+      display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
+      if (smallFontWidth <= (display.width()-(display.width()/2-(smallFontWidth/2)))) {
+        // fits with small size
+        display.setCursor(display.width()/2-smallFontWidth/2,display.height()/2+smallFontHeight/2);
+        display.print(messageText);
+        success = true;
+      }
+      else {
+        // doesn't fit at any size/line split configuration, display as truncated, large text
+        debugMessage(String("text with small font is ") + abs(smallFontWidth - (display.width()-(display.width()/2-(smallFontWidth/2)))) + " pixels too long, displaying truncated", 1);
+        display.setFont(&FreeSans12pt7b);
+        display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &largeFontPhraseOneWidth, &largeFontPhraseOneHeight);
+        display.setCursor(display.width()/2-largeFontPhraseOneWidth/2,display.height()/2+largeFontPhraseOneHeight/2);
+        display.print(messageText);
       }
     }
-    debugMessage(String("Message part one with large fonts is ") + largeFontPhraseOneWidth + " pixels wide vs. available " + (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2))) + " pixels",1);
-    debugMessage(String("Message part two with large fonts is ") + largeFontPhraseTwoWidth + " pixels wide vs. available " + (display.width()-(display.width()/2-(largeFontPhraseTwoWidth/2))) + " pixels",1);
-    // at large font size, string doesn't fit even if it can be broken into two lines
-    // does the string fit with small size text?
-    display.setFont(&FreeSans9pt7b);
-    display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
-    if (smallFontWidth <= (display.width()-(display.width()/2-(smallFontWidth/2))))
-    {
-      // fits with small size
-      display.setCursor(display.width()/2-smallFontWidth/2,display.height()/2+smallFontHeight/2);
-      display.print(messageText);
-    }
-    else
-    {
-      debugMessage(String("ERROR: screenAlert messageText '") + messageText + "' with small font is " + abs(smallFontWidth - (display.width()-(display.width()/2-(smallFontWidth/2)))) + " pixels too long", 1);
-      // doesn't fit at any size/line split configuration, display as truncated, large text
-      display.setFont(&FreeSans12pt7b);
-      display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &largeFontPhraseOneWidth, &largeFontPhraseOneHeight);
-      display.setCursor(display.width()/2-largeFontPhraseOneWidth/2,display.height()/2+largeFontPhraseOneHeight/2);
-      display.print(messageText);
-      status = false;
-    }
   }
-  display.display();
   debugMessage("screenAlert end",1);
-  return status;
+  return success;
 }
 
 void screenMain(String firstName, String lastName, String url)
