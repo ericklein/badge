@@ -7,7 +7,6 @@
 
 // Configuration Step 1: Set debug message output
 // comment out to turn off; 1 = summary, 2 = verbose
-
 // #define DEBUG 2
 
 // Configuration Step 2: simulate WiFi and sensor hardware,
@@ -59,7 +58,7 @@ const String qrCodeURL 	= "https://www.linkedin.com/in/ericklein";
 // 1 orients vertically with flex cable as top
 const uint8_t screenRotation = 1; // rotation 1 = 0,0 is away from flex cable, right aligned with flex cable label
 const uint8_t screenCount = 3;
-const uint8_t screenSwapInterval = 30; // in seconds
+const uint32_t screenSwapIntervalMS = 30000;
 
 // screen layout assists
 const uint8_t xMargins = 5;
@@ -117,28 +116,29 @@ const uint16_t buttonDebounceDelay = 50; // time in milliseconds to debounce but
 
 // CO2 sensor
 #ifdef DEBUG
-	// time between samples in seconds
-  const uint16_t sensorSampleInterval = 30;
+	// time between samples
+  const uint32_t sensorSampleIntervalMS = 30000;
 #else
-  const uint16_t sensorSampleInterval = 180;
+  const uint32_t sensorSampleIntervalMS = 180000;
 #endif
 
 const uint8_t co2SensorReadFailureLimit = 20;
 
-const uint16_t co2Warning = 800; // Associated with "OK"
-const uint16_t co2Alarm = 1000; // Associated with "Poor"
+// CO2 value thresholds for labeling
+const uint16_t co2Fair = 800;
+const uint16_t co2Poor = 1200;
+const uint16_t co2Bad = 2000;
 
-const String co2Labels[3]={"Good", "So-So", "Poor"};
+const String warningLabels[4]={"Good", "Fair", "Poor", "Bad"};
 
 const uint16_t sensorCO2Min =      400;
 const uint16_t sensorCO2Max =      2000;
-const uint16_t sensorTempCOffset = 0; // in C
 
 // Sleep timers
-const uint8_t hardwareErrorSleepTime = 10; // in seconds
-const uint16_t sleepInterval = screenCount * 30; // 30 seconds for each screen before sleep
+const uint32_t hardwareErrorSleepTimeμS = 10000000; // in seconds
+const uint32_t sleepIntervalMS = screenCount * 30000;
 #ifdef DEBUG
-  const uint16_t sleepTime = 60; // in seconds
+  const uint32_t sleepTimeμS = 60000000;
 #else
-  const uint16_t sleepTime = 300; // in seconds
+  const uint32_t sleepTimeμS = 300000000;
 #endif  

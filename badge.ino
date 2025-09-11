@@ -67,9 +67,8 @@ typedef struct
 } hdweData;
 hdweData hardwareData;
 
-// int32_t timeLastSensorSample  = -(sensorSampleInterval*1000);  // negative value triggers sensor sample on first iteration of loop()
-uint32_t timeLastSensorSample;
-uint32_t timeLastScreenSwap;
+uint32_t timeLastSensorSampleMS;
+uint32_t timeLastScreenSwapMS;
 uint8_t screenCurrent = 0; // tracks which screen is displayed
 
 void setup()
@@ -80,7 +79,7 @@ void setup()
     Serial.begin(115200);
     // wait for serial port connection
     while (!Serial)
-    debugMessage(String("Starting badge with ") + sensorSampleInterval + " second sample interval",1);
+    debugMessage(String("Starting badge with ") + (sensorSampleIntervalMS/1000) + " second sample interval",1);
   #endif
 
   esp_sleep_wakeup_cause_t wakeup_reason;
@@ -141,7 +140,7 @@ void setup()
     screenAlert("No SCD4X");
     // This error often occurs right after a firmware flash and reset.
     // Hardware deep sleep typically resolves it
-    powerDisable(hardwareErrorSleepTime);
+    powerDisable(hardwareErrorSleepTimeμS);
   }
 
   buttonOne.setDebounceTime(buttonDebounceDelay);
@@ -155,9 +154,9 @@ void setup()
   {
     screenAlert("CO2 read fail");
   }
-  timeLastSensorSample = millis();
   screenUpdate();
-  timeLastScreenSwap = millis();
+  timeLastScreenSwapMS = millis();
+  timeLastSensorSampleMS = millis();
 } 
 
 void loop()
@@ -172,33 +171,33 @@ void loop()
   }
 
   // is it time to update the sensor values?
-  if((millis() - timeLastSensorSample) >= (sensorSampleInterval * 1000)) // converting sensorSampleInterval into milliseconds
+  if((millis() - timeLastSensorSampleMS) >= sensorSampleIntervalMS)
   {
     if (!sensorCO2Read())
     {
       screenAlert("CO2 read fail");
     }
     // Save current timestamp to restart sample delay interval
-    timeLastSensorSample = millis();
+    timeLastSensorSampleMS = millis();
   }
 
   // is it time to swap screens?
-  if((millis() - timeLastScreenSwap) >= (screenSwapInterval * 1000)) // converting screenSwapInterval into milliseconds
+  if((millis() - timeLastScreenSwapMS) >= screenSwapIntervalMS)
   {
     ((screenCurrent + 1) >= screenCount) ? screenCurrent = 0 : screenCurrent ++;
     debugMessage(String("screen swap timer triggered, switch to screen ") + screenCurrent,1);
     screenUpdate();
-    timeLastScreenSwap = millis();
+    timeLastScreenSwapMS = millis();
   }
 
   // is it time to go to sleep?
-  if((millis()) >= (sleepInterval * 1000)) // converting sensorSampleInterval into milliseconds
+  if((millis()) >= sleepIntervalMS)
   {
     // redraw main screen
     screenCurrent = 0;
     screenUpdate();
     // go to sleep
-    powerDisable(sleepTime);
+    powerDisable(sleepTimeμS);
   }
 }
 
@@ -338,7 +337,7 @@ void screenMain(String firstName, String lastName, String url)
   display.setCursor(xMargins, 240);
   display.print("CO");
   display.setCursor(xMargins+50,240);
-  display.print(" " + co2Labels[co2Range(sensorData.ambientCO2)]);
+  display.print(" " + warningLabels[co2Range(sensorData.ambientCO2)]);
   display.setFont(&FreeSans9pt7b);
   display.setCursor(xMargins+35,(240+10));
   display.print("2");
@@ -531,7 +530,7 @@ void screenSensors()
   // co2 value
   display.setFont(&FreeSans24pt7b);
   display.setCursor(xMidMargin-55,yCO2Value);
-  display.print(co2Labels[co2Range(sensorData.ambientCO2)]);
+  display.print(warningLabels[co2Range(sensorData.ambientCO2)]);
   display.setFont();
   display.setCursor((xMargins+80),(yCO2Value+7));
   display.print("(" + String(sensorData.ambientCO2) + ")");
@@ -764,21 +763,13 @@ bool sensorCO2Init()
       return false;
     }
 
-    // Check onboard configuration settings while not in active measurement mode
-    float offset;
-    error = co2Sensor.getTemperatureOffset(offset);
-    if (error == 0){
-        error = co2Sensor.setTemperatureOffset(sensorTempCOffset);
-        if (error == 0)
-          debugMessage(String("Initial SCD40 temperature offset ") + offset + " ,set to " + sensorTempCOffset,2);
-    }
-
-    uint16_t sensor_altitude;
-    error = co2Sensor.getSensorAltitude(sensor_altitude);
-    if (error == 0){
-      error = co2Sensor.setSensorAltitude(SITE_ALTITUDE);  // optimizes CO2 reading
-      if (error == 0)
-        debugMessage(String("Initial SCD40 altitude ") + sensor_altitude + " meters, set to " + SITE_ALTITUDE,2);
+    // modify configuration settings while not in active measurement mode
+    error = co2Sensor.setSensorAltitude(SITE_ALTITUDE);  // optimizes CO2 reading
+    if (!error)
+      debugMessage(String("SCD4X altitude set to ") + SITE_ALTITUDE + " meters",2);
+    else {
+      errorToString(error, errorMessage, 256);
+      debugMessage(String(errorMessage) + " executing SCD4X setSensorAltitude()",1);
     }
 
     // Start Measurement.  For high power mode, with a fixed update interval of 5 seconds
@@ -805,57 +796,68 @@ bool sensorCO2Read()
 // Output : true if successful read, false if not
 // Improvement : NA
 {
+  bool success = false;
+
   #ifdef HARDWARE_SIMULATE
+    success = true;
     sensorCO2Simulate();
-    debugMessage(String("SIMULATED SCD40: ") + sensorData.ambientTemperatureF + "F, " + sensorData.ambientHumidity + "%, " + sensorData.ambientCO2 + " ppm",1);
   #else
     char errorMessage[256];
-    bool status = false;
     uint16_t co2 = 0;
-    float temperature = 0.0f;
+    float temperatureC = 0.0f;
     float humidity = 0.0f;
     uint16_t error;
     uint8_t errorCount = 0;
 
+    // Loop attempting to read Measurement
     debugMessage("CO2 sensor read initiated",1);
-    while(!status) {
+    while(!success) {
+      delay(100);
       errorCount++;
-      if (errorCount>co2SensorReadFailureLimit)
+      if (errorCount > co2SensorReadFailureLimit) {
+        debugMessage(String("SCD40 failed to read after ") + errorCount + " attempts",1);
         break;
+      }
       // Is data ready to be read?
       bool isDataReady = false;
       error = co2Sensor.getDataReadyStatus(isDataReady);
       if (error) {
           errorToString(error, errorMessage, 256);
-          debugMessage(String("Error trying to execute getDataReadyFlag(): ") + errorMessage,1);
+          debugMessage(String("Error trying to execute getDataReadyStatus(): ") + errorMessage,1);
           continue; // Back to the top of the loop
       }
-      error = co2Sensor.readMeasurement(co2, temperature, humidity);
+      if (!isDataReady) {
+          continue; // Back to the top of the loop
+      }
+      debugMessage("SCD4X data available",2);
+
+      error = co2Sensor.readMeasurement(co2, temperatureC, humidity);
       if (error) {
           errorToString(error, errorMessage, 256);
-          debugMessage(String("SCD40 executing readMeasurement(): ") + errorMessage,2);
+          debugMessage(String("SCD40 executing readMeasurement(): ") + errorMessage,1);
           // Implicitly continues back to the top of the loop
       }
       else if (co2 < sensorCO2Min || co2 > sensorCO2Max)
       {
-        debugMessage(String("SCD40 CO2 reading: ") + sensorData.ambientCO2 + " is out of expected range",1);
+        debugMessage(String("SCD40 CO2 reading: ") + co2 + " is out of expected range",1);
         //(sensorData.ambientCO2 < sensorCO2Min) ? sensorData.ambientCO2 = sensorCO2Min : sensorData.ambientCO2 = sensorCO2Max;
         // Implicitly continues back to the top of the loop
       }
       else
       {
-        // valid measurement available, update globals
-        sensorData.ambientTemperatureF = (temperature*1.8)+32.0;
+        // Valid measurement available, update globals
+        sensorData.ambientTemperatureF = (temperatureC*1.8)+32.0;
         sensorData.ambientHumidity = humidity;
         sensorData.ambientCO2 = co2;
         debugMessage(String("SCD40: ") + sensorData.ambientTemperatureF + "F, " + sensorData.ambientHumidity + "%, " + sensorData.ambientCO2 + " ppm",1);
-        status = true;
+        // Update global sensor readings
+        success = true;
         break;
       }
-    delay(100); // reduces readMeasurement() Not enough data received errors
+      delay(100); // reduces readMeasurement() "Not enough data received" errors
     }
   #endif
-  return(status);
+  return(success);
 }
 
 #ifdef HARDWARE_SIMULATE
@@ -903,18 +905,22 @@ void neoPixelCO2()
   neopixels.show();
   for (uint8_t i=0;i<neoPixelCount;i++)
   {
-      if (sensorData.ambientCO2 < co2Warning)
-        neopixels.setPixelColor(i,0,255,0);
-      else if (sensorData.ambientCO2 > co2Alarm)
-        neopixels.setPixelColor(i,255,0,0);
-      else
+    if (sensorData.ambientCO2 < co2Fair)
+      neopixels.setPixelColor(i,0,255,0);
+    else
+      if (sensorData.ambientCO2 < co2Poor)
         neopixels.setPixelColor(i,255,255,0);
-      neopixels.show();
+      else
+        if (sensorData.ambientCO2 < co2Bad)
+          neopixels.setPixelColor(i,255,165,0);
+        else
+          neopixels.setPixelColor(i,255,0,0);
+    neopixels.show();
   }
   debugMessage("neoPixelCO2 end",1);
 }
 
-void powerDisable(uint16_t deepSleepTime)
+void powerDisable(uint32_t deepSleepTime)
 // Powers down hardware then deep sleep MCU
 {
   char errorMessage[256];
@@ -948,20 +954,21 @@ void powerDisable(uint16_t deepSleepTime)
   esp_sleep_enable_ext0_wakeup(WAKE_FROM_SLEEP_PIN,0);  //1 = High, 0 = Low
 
   // ESP32 timer based deep sleep
-  esp_sleep_enable_timer_wakeup(deepSleepTime*1000000); // ESP microsecond modifier
-  debugMessage(String("powerDisable complete: ESP32 deep sleep for ") + (deepSleepTime) + " seconds",1);
+  esp_sleep_enable_timer_wakeup(deepSleepTime);
+  debugMessage(String("powerDisable complete: ESP32 deep sleep for ") + (deepSleepTime/1000000) + " seconds",1);
   esp_deep_sleep_start();
 }
 
-uint8_t co2Range(uint16_t value)
-// places CO2 value into a three band range for labeling and coloring. See config.h for more information
+uint8_t co2Range(uint16_t co2) 
+// converts co2 value to index value for labeling and color
 {
-  if (value < co2Warning)
-    return 0;
-  else if (value < co2Alarm)
-    return 1;
-  else
-    return 2;
+  uint8_t co2Range = 
+    (co2 <= co2Fair) ? 0 :
+    (co2 <= co2Poor) ? 1 :
+    (co2 <= co2Bad)  ? 2 : 3;
+
+  debugMessage(String("CO2 input of ") + co2 + " yields co2Range of " + co2Range, 2);
+  return co2Range;
 }
 
 void debugMessage(String messageText, uint8_t messageLevel)
