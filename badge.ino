@@ -77,57 +77,10 @@ void setup()
     debugMessage(String("Starting badge with ") + (sensorSampleIntervalMS/1000) + " second sample interval",1);
   #endif
 
-  esp_sleep_wakeup_cause_t wakeup_reason;
-  wakeup_reason = esp_sleep_get_wakeup_cause();
-  switch (wakeup_reason)
-  {
-    case ESP_SLEEP_WAKEUP_TIMER : // do nothing
-    {
-      debugMessage("wakeup cause: timer",1);
-    }
-    break;
-    case ESP_SLEEP_WAKEUP_EXT0 :
-    {
-      debugMessage("wakeup cause: RTC gpio pin",1);
-    }
-    break;
-    case ESP_SLEEP_WAKEUP_EXT1 :
-    {
-      uint16_t gpioReason = log(esp_sleep_get_ext1_wakeup_status())/log(2);
-      debugMessage(String("wakeup cause: RTC gpio pin: ") + gpioReason,1);
-      // implment switch (gpioReason)
-    }
-    break;
-    case ESP_SLEEP_WAKEUP_TOUCHPAD : 
-    {
-      debugMessage("wakup cause: touchpad",1);
-    }  
-    break;
-    case ESP_SLEEP_WAKEUP_ULP : 
-    {
-      debugMessage("wakeup cause: program",1);
-    }  
-    break; 
-    default :
-    {
-      // likely caused by reset after firmware load
-      debugMessage(String("Wakeup likely cause: first boot after firmware flash, reason: ") + wakeup_reason,1);
-    }
-    break;
-  }
-
+  powerWakeUpCause();
+  screenInit();
   powerNeoPixelEnable();
-
-  // Initialize e-ink screen
-  // there is no way to query e-ink screen to check for successful initialization
-  //display.begin(THINKINK_GRAYSCALE4);
-  display.begin(THINKINK_MONO);
-  display.setRotation(screenRotation);
-  display.setTextWrap(false);
-  display.setTextColor(EPD_BLACK);
-  // debugMessage (String("epd: enabled in grayscale with rotation") + screenRotation,1);
-  debugMessage(String("epd: enabled in mono with rotation: ") + screenRotation,1);
-
+  
   // Initialize SCD4X
   if (!sensorCO2Init())
   {
@@ -138,7 +91,7 @@ void setup()
     powerDisable(hardwareErrorSleepTimeμS);
   }
 
-  buttonOne.setDebounceTime(buttonDebounceDelay);
+  buttonOne.setDebounceTime(buttonDebounceDelayMS);
 
   // first tme screen draw
   if (!sensorCO2Read())
@@ -222,6 +175,19 @@ void screenUpdate()
       debugMessage("Error: Unexpected screen ID",1);
       break;
   }
+}
+
+void screenInit()
+{
+  // Initialize e-ink screen
+  // there is no way to query e-ink screen to check for successful initialization
+  //display.begin(THINKINK_GRAYSCALE4);
+  display.begin(THINKINK_MONO);
+  display.setRotation(screenRotation);
+  display.setTextWrap(false);
+  display.setTextColor(EPD_BLACK);
+  // debugMessage (String("epd: enabled in grayscale with rotation") + screenRotation,1);
+  debugMessage(String("epd: enabled in mono with rotation: ") + screenRotation,1);
 }
 
 bool screenAlert(String messageText)
@@ -792,7 +758,7 @@ bool sensorCO2Read()
 // Description: Sets global environment values from SCD40 sensor
 // Parameters: none
 // Output : true if successful read, false if not
-// Improvement : NA
+// Improvement : error bounds for tempF and humidity
 {
   bool success = false;
 
@@ -855,7 +821,7 @@ bool sensorCO2Read()
       delay(100); // reduces readMeasurement() "Not enough data received" errors
     }
   #endif
-  return(success);
+  return success;
 }
 
 #ifdef HARDWARE_SIMULATE
@@ -893,6 +859,48 @@ void powerNeoPixelEnable()
   neopixels.setBrightness(neoPixelBrightness);
   neopixels.show(); // Initialize all pixels to off
   debugMessage("power on: neopixels",1);
+}
+
+void powerWakeUpCause()
+{
+    esp_sleep_wakeup_cause_t wakeup_reason;
+  wakeup_reason = esp_sleep_get_wakeup_cause();
+  switch (wakeup_reason)
+  {
+    case ESP_SLEEP_WAKEUP_TIMER : // do nothing
+    {
+      debugMessage("wakeup cause: timer",1);
+    }
+    break;
+    case ESP_SLEEP_WAKEUP_EXT0 :
+    {
+      debugMessage("wakeup cause: RTC gpio pin",1);
+    }
+    break;
+    case ESP_SLEEP_WAKEUP_EXT1 :
+    {
+      uint16_t gpioReason = log(esp_sleep_get_ext1_wakeup_status())/log(2);
+      debugMessage(String("wakeup cause: RTC gpio pin: ") + gpioReason,1);
+      // implment switch (gpioReason)
+    }
+    break;
+    case ESP_SLEEP_WAKEUP_TOUCHPAD : 
+    {
+      debugMessage("wakup cause: touchpad",1);
+    }  
+    break;
+    case ESP_SLEEP_WAKEUP_ULP : 
+    {
+      debugMessage("wakeup cause: program",1);
+    }  
+    break; 
+    default :
+    {
+      // likely caused by reset after firmware load
+      debugMessage(String("Wakeup likely cause: first boot after firmware flash, reason: ") + wakeup_reason,1);
+    }
+    break;
+  }
 }
 
 void neoPixelCO2()
