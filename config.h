@@ -5,9 +5,11 @@
   See README.md for target information and revision history
 */
 
+#include <FastLED.h> // needed for CRGB definition
+
 // Configuration Step 1: Set debug message output
 // comment out to turn off; 1 = summary, 2 = verbose
-// #define DEBUG 2
+#define DEBUG 2
 
 // Configuration Step 2: simulate WiFi and sensor hardware,
 // returning random but plausible values
@@ -69,7 +71,7 @@ const uint8_t batteryBarHeight = 10;
 // const uint8_t batteryBarHeight = 14; // larger to display debug voltage text
 
 // MagTag neopixel configuration
-const uint8_t neoPixelCount = 3;
+const uint8_t neoPixelCount = 4;
 const uint8_t neoPixelBrightness = 25;
 
 // Battery 
@@ -127,9 +129,10 @@ const uint8_t co2SensorReadFailureLimit = 20;
 // CO2 value thresholds for labeling
 const uint16_t co2Fair = 800;
 const uint16_t co2Poor = 1200;
-const uint16_t co2Bad = 2000;
+const uint16_t co2Bad = 1600;
 
-const String warningLabels[4]={"Good", "Fair", "Poor", "Bad"};
+const String warningLabel[4]={"Good", "Fair", "Poor", "Bad"};
+const CRGB warningColor[4]={CRGB::Green, CRGB::Yellow, CRGB::OrangeRed, CRGB::Red};
 
 const uint16_t sensorCO2Min =      400;
 const uint16_t sensorCO2Max =      2000;
@@ -138,7 +141,7 @@ const uint16_t sensorCO2Max =      2000;
 const uint32_t hardwareErrorSleepTimeμS = 10000000;  // sleep time if hardware error occurs
 const uint32_t sleepIntervalMS = screenCount * 30000;
 #ifdef DEBUG
-  const uint32_t sleepTimeμS = 60000000;
+  const uint32_t sleepTimeμS = 30000000;
 #else
   const uint32_t sleepTimeμS = 300000000;
 #endif  
