@@ -70,7 +70,7 @@ const uint8_t batteryBarWidth = 28;
 const uint8_t batteryBarHeight = 10;
 // const uint8_t batteryBarHeight = 14; // larger to display debug voltage text
 
-// MagTag neopixel configuration
+// MagTag neopixels
 const uint8_t neoPixelCount = 4;
 const uint8_t neoPixelBrightness = 25;
 
@@ -124,18 +124,14 @@ const uint16_t buttonDebounceDelayMS = 50;
   const uint32_t sensorSampleIntervalMS = 180000;
 #endif
 
-const uint8_t co2SensorReadFailureLimit = 20;
-
-// CO2 value thresholds for labeling
-const uint16_t co2Fair = 800;
-const uint16_t co2Poor = 1200;
-const uint16_t co2Bad = 1600;
-
+const uint16_t co2Fair =  800;
+const uint16_t co2Poor =  1200;
+const uint16_t co2Bad =   1600;
 const String warningLabel[4]={"Good", "Fair", "Poor", "Bad"};
 const CRGB warningColor[4]={CRGB::Green, CRGB::Yellow, CRGB::OrangeRed, CRGB::Red};
-
-const uint16_t sensorCO2Min =      400;
-const uint16_t sensorCO2Max =      2000;
+const uint16_t sensorCO2Min = 400;
+const uint16_t sensorCO2Max = 2000;
+const uint8_t co2SensorReadFailureLimit = 20;
 
 // Sleep timers
 const uint32_t hardwareErrorSleepTimeμS = 10000000;  // sleep time if hardware error occurs

@@ -32,7 +32,7 @@ ezButton buttonOne(buttonD1Pin);
 
 // e-ink support
 #include <Adafruit_ThinkInk.h>
-// 2.96" greyscale display with 296x128 pixels
+// GDEW029T5D 2.96" greyscale 296x128 pixels, UC8151D
 // colors are EPD_WHITE, EPD_BLACK, EPD_GRAY, EPD_LIGHT, EPD_DARK
 ThinkInk_290_Grayscale4_T5 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY);
 
