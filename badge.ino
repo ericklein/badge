@@ -7,6 +7,8 @@
 
 #include "config.h"   // hardware and internet configuration parameters
 #include "qrcoderm.h" // QR code support
+#include <FastLED.h>
+#include <LEDControl.h>
 
 // hardware support
 
@@ -21,8 +23,8 @@
 #endif
 
 // neopixels
-#include <Adafruit_NeoPixel.h>
-Adafruit_NeoPixel neopixels = Adafruit_NeoPixel(neoPixelCount, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
+CRGB leds[neoPixelCount];
+LEDControl ledStrip(neoPixelCount, leds);
 
 // button support
 #include <ezButton.h>
@@ -30,7 +32,7 @@ ezButton buttonOne(buttonD1Pin);
 
 // e-ink support
 #include <Adafruit_ThinkInk.h>
-// 2.96" greyscale display with 296x128 pixels
+// GDEW029T5D 2.96" greyscale 296x128 pixels, UC8151D
 // colors are EPD_WHITE, EPD_BLACK, EPD_GRAY, EPD_LIGHT, EPD_DARK
 ThinkInk_290_Grayscale4_T5 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY);
 
@@ -97,17 +99,29 @@ void setup()
   if (!sensorCO2Read())
   {
     screenAlert("CO2 read fail");
+    delay(5000);
     sensorData.ambientTemperatureF = 0.0f;
     sensorData.ambientHumidity = 0.0f;
     sensorData.ambientCO2 = 0;
   }
   screenUpdate();
+  ledStrip.setBreathe(warningColor[co2Range(sensorData.ambientCO2)]);
   timeLastScreenSwapMS = millis();
   timeLastSensorSampleMS = millis();
 } 
 
-void loop()
-{
+void loop() {
+
+  // is it time to go to sleep?
+  if((millis()) >= sleepIntervalMS)
+  {
+    // redraw main screen
+    screenCurrent = 0;
+    screenUpdate();
+    // go to sleep
+    powerDisable(sleepTimeμS);
+  }
+
   buttonOne.loop();
   // IMPROVEMENT: check for millis() < XXX for a wakeup button inadvertantly triggering this
   if (buttonOne.isReleased()) 
@@ -115,17 +129,6 @@ void loop()
     ((screenCurrent + 1) >= screenCount) ? screenCurrent = 0 : screenCurrent ++;
     debugMessage(String("button press, switch to screen ") + screenCurrent,1);
     screenUpdate();
-  }
-
-  // is it time to update the sensor values?
-  if((millis() - timeLastSensorSampleMS) >= sensorSampleIntervalMS)
-  {
-    if (!sensorCO2Read())
-    {
-      screenAlert("CO2 read fail");
-    }
-    // Save current timestamp to restart sample delay interval
-    timeLastSensorSampleMS = millis();
   }
 
   // is it time to swap screens?
@@ -137,15 +140,31 @@ void loop()
     timeLastScreenSwapMS = millis();
   }
 
-  // is it time to go to sleep?
-  if((millis()) >= sleepIntervalMS)
-  {
-    // redraw main screen
-    screenCurrent = 0;
-    screenUpdate();
-    // go to sleep
-    powerDisable(sleepTimeμS);
+  // is it time to update the sensor values?
+  if((millis() - timeLastSensorSampleMS) >= sensorSampleIntervalMS) {
+    uint16_t co2LastRead = sensorData.ambientCO2;
+    if (!sensorCO2Read()) {
+      screenAlert("CO2 read fail");
+      delay(5000);
+      screenUpdate();
+    }
+    else {
+      screenUpdate();
+      if (co2Range(sensorData.ambientCO2) != co2Range(co2LastRead)) {
+        // uint8_t lvl = co2Range(sensorData.ambientCO2);
+        // Serial.printf("lvl=%u -> RGB(%u,%u,%u)\n",
+        //   lvl, warningColor[lvl].r, warningColor[lvl].g, warningColor[lvl].b);
+        ledStrip.setBreathe(warningColor[co2Range(sensorData.ambientCO2)]);
+      }
+    }
+    // Save current timestamp to restart sample delay interval
+    timeLastSensorSampleMS = millis();
   }
+
+  // update the LED strip
+  ledStrip.update();
+  FastLED.show();
+  delay(100);          // 10Hz clock for driving animations
 }
 
 void screenUpdate()
@@ -154,7 +173,6 @@ void screenUpdate()
 // Output: NA (void)
 // Improvement: ?
 {
-  neoPixelCO2();
   switch(screenCurrent) {
     case 0:
       screenMain(badgeNameFirst, badgeNameLast, qrCodeURL);
@@ -301,7 +319,7 @@ void screenMain(String firstName, String lastName, String url)
   display.setCursor(xMargins, 240);
   display.print("CO");
   display.setCursor(xMargins+50,240);
-  display.print(" " + warningLabels[co2Range(sensorData.ambientCO2)]);
+  display.print(" " + warningLabel[co2Range(sensorData.ambientCO2)]);
   display.setFont(&FreeSans9pt7b);
   display.setCursor(xMargins+35,(240+10));
   display.print("2");
@@ -494,7 +512,7 @@ void screenSensors()
   // co2 value
   display.setFont(&FreeSans24pt7b);
   display.setCursor(xMidMargin-55,yCO2Value);
-  display.print(warningLabels[co2Range(sensorData.ambientCO2)]);
+  display.print(warningLabel[co2Range(sensorData.ambientCO2)]);
   display.setFont();
   display.setCursor((xMargins+80),(yCO2Value+7));
   display.print("(" + String(sensorData.ambientCO2) + ")");
@@ -855,9 +873,7 @@ void powerNeoPixelEnable()
   digitalWrite(NEOPIXEL_POWER, LOW); // on
 
   // enable MagTag neopixels
-  neopixels.begin();
-  neopixels.setBrightness(neoPixelBrightness);
-  neopixels.show(); // Initialize all pixels to off
+  FastLED.addLeds<WS2812B, PIN_NEOPIXEL, GRB>(leds,neoPixelCount);  // Register the LED strip via FastLED library
   debugMessage("power on: neopixels",1);
 }
 
@@ -903,29 +919,6 @@ void powerWakeUpCause()
   }
 }
 
-void neoPixelCO2()
-{
-  // hard coded for MagTag
-  debugMessage("neoPixelCO2 begin",1);
-  neopixels.clear();
-  neopixels.show();
-  for (uint8_t i=0;i<neoPixelCount;i++)
-  {
-    if (sensorData.ambientCO2 < co2Fair)
-      neopixels.setPixelColor(i,0,255,0);
-    else
-      if (sensorData.ambientCO2 < co2Poor)
-        neopixels.setPixelColor(i,255,255,0);
-      else
-        if (sensorData.ambientCO2 < co2Bad)
-          neopixels.setPixelColor(i,255,165,0);
-        else
-          neopixels.setPixelColor(i,255,0,0);
-    neopixels.show();
-  }
-  debugMessage("neoPixelCO2 end",1);
-}
-
 void powerDisable(uint32_t deepSleepTime)
 // Powers down hardware then deep sleep MCU
 {
@@ -966,15 +959,15 @@ void powerDisable(uint32_t deepSleepTime)
 }
 
 uint8_t co2Range(uint16_t co2) 
-// converts co2 value to index value for labeling and color
+// 0=Good/Green, 1=Fair/Yellow, 2=Poor/Orange, 3=Bad/Red
 {
-  uint8_t co2Range = 
+  uint8_t range = 
     (co2 <= co2Fair) ? 0 :
     (co2 <= co2Poor) ? 1 :
     (co2 <= co2Bad)  ? 2 : 3;
 
-  debugMessage(String("CO2 input of ") + co2 + " yields co2Range of " + co2Range, 2);
-  return co2Range;
+  debugMessage(String("CO2 ") + co2 + "ppm = co2Range " + range + "," + warningLabel[range], 2);
+  return range;
 }
 
 void debugMessage(String messageText, uint8_t messageLevel)
