@@ -31,10 +31,9 @@ LEDControl ledStrip(neoPixelCount, leds);
 ezButton buttonOne(buttonD1Pin);
 
 // e-ink support
-#include <Adafruit_ThinkInk.h>
 // GDEW029T5D 2.96" greyscale 296x128 pixels, UC8151D
-// colors are EPD_WHITE, EPD_BLACK, EPD_GRAY, EPD_LIGHT, EPD_DARK
-ThinkInk_290_Grayscale4_T5 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY);
+#include <GxEPD2_BW.h>
+GxEPD2_BW<GxEPD2_290_T5D, GxEPD2_290_T5D::HEIGHT> display(GxEPD2_290_T5D(EPD_CS, EPD_DC, EPD_RESET, EPD_BUSY));
 
 // fonts and glyphs
 #include <Fonts/FreeSans9pt7b.h>    // screenMain
@@ -198,13 +197,10 @@ void screenUpdate()
 void screenInit()
 {
   // Initialize e-ink screen
-  // there is no way to query e-ink screen to check for successful initialization
-  //display.begin(THINKINK_GRAYSCALE4);
-  display.begin(THINKINK_MONO);
-  display.setRotation(screenRotation);
+  display.init(115200);
   display.setTextWrap(false);
-  display.setTextColor(EPD_BLACK);
-  // debugMessage (String("epd: enabled in grayscale with rotation") + screenRotation,1);
+  display.setRotation(screenRotation);
+  display.setTextColor(GxEPD_BLACK);
   debugMessage(String("epd: enabled in mono with rotation: ") + screenRotation,1);
 }
 
@@ -218,72 +214,74 @@ bool screenAlert(String messageText)
   int16_t x1, y1;
   uint16_t largeFontPhraseOneWidth, largeFontPhraseOneHeight;
 
-  debugMessage("screenAlert start",1);
+  debugMessage(String("screenAlert '") + messageText + "' start",1);
 
-  display.clearBuffer();
-
-  debugMessage(String("screenAlert text is '") + messageText + "'",2);
-
-  // does message fit on one line?
-  display.setFont(&FreeSans12pt7b);
-  display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &largeFontPhraseOneWidth, &largeFontPhraseOneHeight);
-  if (largeFontPhraseOneWidth <= (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2)))) {
-    // fits with large font, display
-    display.setCursor(((display.width()/2)-(largeFontPhraseOneWidth/2)),((display.height()/2)+(largeFontPhraseOneHeight/2)));
-    display.print(messageText);
-    success = true;
-  }
-  else {
-    // does message fit on two lines?
-    debugMessage(String("text with large font is ") + abs(largeFontPhraseOneWidth - (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2)))) + " pixels too long, trying 2 lines", 1);
-    // does the string break into two pieces based on a space character?
-    uint8_t spaceLocation;
-    String messageTextPartOne, messageTextPartTwo;
-    uint16_t largeFontPhraseTwoWidth, largeFontPhraseTwoHeight;
-
-    spaceLocation = messageText.indexOf(' ');
-    if (spaceLocation) {
-      // has a space character, measure two lines
-      messageTextPartOne = messageText.substring(0,spaceLocation);
-      messageTextPartTwo = messageText.substring(spaceLocation+1);
-      display.getTextBounds(messageTextPartOne.c_str(), 0, 0, &x1, &y1, &largeFontPhraseOneWidth, &largeFontPhraseOneHeight);
-      display.getTextBounds(messageTextPartTwo.c_str(), 0, 0, &x1, &y1, &largeFontPhraseTwoWidth, &largeFontPhraseTwoHeight);
-      debugMessage(String("Message part one with large font is ") + largeFontPhraseOneWidth + " pixels wide",2);
-      debugMessage(String("Message part two with large font is ") + largeFontPhraseTwoWidth + " pixels wide",2);
+  display.setFullWindow();
+  display.firstPage();
+  do {
+    display.fillScreen(GxEPD_WHITE); // clear the screen
+    // does message fit on one line?
+    display.setFont(&FreeSans12pt7b);
+    display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &largeFontPhraseOneWidth, &largeFontPhraseOneHeight);
+    if (largeFontPhraseOneWidth <= (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2)))) {
+      // fits with large font, display
+      display.setCursor(((display.width()/2)-(largeFontPhraseOneWidth/2)),((display.height()/2)+(largeFontPhraseOneHeight/2)));
+      display.print(messageText);
+      success = true;
     }
     else {
-      debugMessage("there is no space in message to break message into 2 lines",2);
-    }
-    if (spaceLocation && (largeFontPhraseOneWidth <= (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2)))) && (largeFontPhraseTwoWidth <= (display.width()-(display.width()/2-(largeFontPhraseTwoWidth/2))))) {
-        // fits on two lines, display
-        display.setCursor(((display.width()/2)-(largeFontPhraseOneWidth/2)),(display.height()/2+largeFontPhraseOneHeight/2)-25);
-        display.print(messageTextPartOne);
-        display.setCursor(((display.width()/2)-(largeFontPhraseTwoWidth/2)),(display.height()/2+largeFontPhraseTwoHeight/2)+25);
-        display.print(messageTextPartTwo);
-        success = true;
-    }
-    else {
-      // does message fit on one line with small text?
-      debugMessage("couldn't break text into 2 lines or one line is too long, trying small text",1);
-      uint16_t smallFontWidth, smallFontHeight;
-      display.setFont(&FreeSans9pt7b);
-      display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
-      if (smallFontWidth <= (display.width()-(display.width()/2-(smallFontWidth/2)))) {
-        // fits with small size
-        display.setCursor(display.width()/2-smallFontWidth/2,display.height()/2+smallFontHeight/2);
-        display.print(messageText);
-        success = true;
+      // does message fit on two lines?
+      debugMessage(String("text with large font is ") + abs(largeFontPhraseOneWidth - (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2)))) + " pixels too long, trying 2 lines", 1);
+      // does the string break into two pieces based on a space character?
+      uint8_t spaceLocation;
+      String messageTextPartOne, messageTextPartTwo;
+      uint16_t largeFontPhraseTwoWidth, largeFontPhraseTwoHeight;
+
+      spaceLocation = messageText.indexOf(' ');
+      if (spaceLocation) {
+        // has a space character, measure two lines
+        messageTextPartOne = messageText.substring(0,spaceLocation);
+        messageTextPartTwo = messageText.substring(spaceLocation+1);
+        display.getTextBounds(messageTextPartOne.c_str(), 0, 0, &x1, &y1, &largeFontPhraseOneWidth, &largeFontPhraseOneHeight);
+        display.getTextBounds(messageTextPartTwo.c_str(), 0, 0, &x1, &y1, &largeFontPhraseTwoWidth, &largeFontPhraseTwoHeight);
+        debugMessage(String("Message part one with large font is ") + largeFontPhraseOneWidth + " pixels wide",2);
+        debugMessage(String("Message part two with large font is ") + largeFontPhraseTwoWidth + " pixels wide",2);
       }
       else {
-        // doesn't fit at any size/line split configuration, display as truncated, large text
-        debugMessage(String("text with small font is ") + abs(smallFontWidth - (display.width()-(display.width()/2-(smallFontWidth/2)))) + " pixels too long, displaying truncated", 1);
-        display.setFont(&FreeSans12pt7b);
-        display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &largeFontPhraseOneWidth, &largeFontPhraseOneHeight);
-        display.setCursor(display.width()/2-largeFontPhraseOneWidth/2,display.height()/2+largeFontPhraseOneHeight/2);
-        display.print(messageText);
+        debugMessage("there is no space in message to break message into 2 lines",2);
+      }
+      if (spaceLocation && (largeFontPhraseOneWidth <= (display.width()-(display.width()/2-(largeFontPhraseOneWidth/2)))) && (largeFontPhraseTwoWidth <= (display.width()-(display.width()/2-(largeFontPhraseTwoWidth/2))))) {
+          // fits on two lines, display
+          display.setCursor(((display.width()/2)-(largeFontPhraseOneWidth/2)),(display.height()/2+largeFontPhraseOneHeight/2)-25);
+          display.print(messageTextPartOne);
+          display.setCursor(((display.width()/2)-(largeFontPhraseTwoWidth/2)),(display.height()/2+largeFontPhraseTwoHeight/2)+25);
+          display.print(messageTextPartTwo);
+          success = true;
+      }
+      else {
+        // does message fit on one line with small text?
+        debugMessage("couldn't break text into 2 lines or one line is too long, trying small text",1);
+        uint16_t smallFontWidth, smallFontHeight;
+        display.setFont(&FreeSans9pt7b);
+        display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
+        if (smallFontWidth <= (display.width()-(display.width()/2-(smallFontWidth/2)))) {
+          // fits with small size
+          display.setCursor(display.width()/2-smallFontWidth/2,display.height()/2+smallFontHeight/2);
+          display.print(messageText);
+          success = true;
+        }
+        else {
+          // doesn't fit at any size/line split configuration, display as truncated, large text
+          debugMessage(String("text with small font is ") + abs(smallFontWidth - (display.width()-(display.width()/2-(smallFontWidth/2)))) + " pixels too long, displaying truncated", 1);
+          display.setFont(&FreeSans12pt7b);
+          display.getTextBounds(messageText.c_str(), 0, 0, &x1, &y1, &largeFontPhraseOneWidth, &largeFontPhraseOneHeight);
+          display.setCursor(display.width()/2-largeFontPhraseOneWidth/2,display.height()/2+largeFontPhraseOneHeight/2);
+          display.print(messageText);
+        }
       }
     }
   }
+  while (display.nextPage());
   debugMessage("screenAlert end",1);
   return success;
 }
@@ -302,18 +300,36 @@ void screenMain(String firstName, String lastName, String url)
   const uint16_t yHumidity = 90;
   const uint16_t yCO2 = 40;
 
-  display.clearBuffer();
+  display.setFullWindow();
+  display.firstPage();
+  do
+  {
+    display.fillScreen(GxEPD_WHITE); // clear screen
+    // name
+    display.setFont(&FreeSans24pt7b);
+    display.setCursor(xMargins,48);
+    display.print(firstName);
+    display.setFont(&FreeSans12pt7b);
+    display.setCursor(xMargins,72);
+    display.print(lastName);
+    // QR code
+    screenHelperQRCode(12,98,url);
 
-  // name
-  display.setFont(&FreeSans24pt7b);
-  display.setCursor(xMargins,48);
-  display.print(firstName);
-  display.setFont(&FreeSans12pt7b);
-  display.setCursor(xMargins,72);
-  display.print(lastName);
-  // QR code
-  screenHelperQRCode(12,98,url);
+    // co2 main line
+    display.setFont(&FreeSans12pt7b);
+    display.setCursor(xMargins, 240);
+    display.print("CO");
+    display.setCursor(xMargins+50,240);
+    display.print(" " + warningLabels[co2Range(sensorData.ambientCO2)]);
+    display.setFont(&FreeSans9pt7b);
+    display.setCursor(xMargins+35,(240+10));
+    display.print("2");
+    // co2 value
+    display.setFont();
+    display.setCursor((xMargins+80),(240+7));
+    display.print("(" + String(sensorData.ambientCO2) + ")");
 
+<<<<<<< Updated upstream
   // co2 main line
   display.setFont(&FreeSans12pt7b);
   display.setCursor(xMargins, 240);
@@ -331,6 +347,12 @@ void screenMain(String firstName, String lastName, String url)
   // draw battery in the lower right corner. -3 in first parameter accounts for battery nub
   screenHelperBatteryStatus((display.width()-xMargins-batteryBarWidth-3),(display.height()-yBottomMargin-batteryBarHeight),batteryBarWidth,batteryBarHeight);
   display.display();
+=======
+    // draw battery in the lower right corner. -3 in first parameter accounts for battery nub
+    screenHelperBatteryStatus((display.width()-xMargins-batteryBarWidth-3),(display.height()-yBottomMargin-batteryBarHeight),batteryBarWidth,batteryBarHeight);
+  }
+  while (display.nextPage());
+>>>>>>> Stashed changes
   debugMessage("screenMain end",1);
 }
 
@@ -404,73 +426,76 @@ void screenThreeThings(String firstThing, String secondThing, String thirdThing)
   uint16_t largeFontWidth, largeFontHeight;
   uint16_t smallFontWidth, smallFontHeight;
 
-  display.clearBuffer();
-
-  display.setFont(&FreeSans12pt7b);
-  display.setCursor(xMargins,24);
-  display.print("I love");
-
-  // display firstThing
-  display.setCursor(xMargins,94);
-  display.setFont(&FreeSans18pt7b);
-  display.getTextBounds(firstThing.c_str(), 0, 0, &x1, &y1, &largeFontWidth, &largeFontHeight);
-  if (largeFontWidth >= (display.width()-xMargins))
+  display.setFullWindow();
+  display.firstPage();
+  do
   {
-    debugMessage(String("ERROR: firstThing '") + firstThing + "' with large font is " + abs(display.width()-largeFontWidth-xMargins) + " pixels too long", 1);
+    display.fillScreen(GxEPD_WHITE);
     display.setFont(&FreeSans12pt7b);
-    display.getTextBounds(firstThing.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
-    if (smallFontWidth >= (display.width()-xMargins))
-    {
-      // text is too long even if we shrink text size
-      // display it truncated at larger size
-      // IMPROVEMENT: Is it two words we can split?
-      debugMessage(String("ERROR: firstThing '") + firstThing + "' with small font is " + abs(display.width()-smallFontWidth-xMargins) + " pixels too long", 1);
-      display.setFont(&FreeSans18pt7b);
-    }
-  }
-  display.print(firstThing);
+    display.setCursor(xMargins,24);
+    display.print("I love");
 
-  // display secondThing
-  display.setCursor(xMargins,184);
+    // display firstThing
+    display.setCursor(xMargins,94);
     display.setFont(&FreeSans18pt7b);
-  display.getTextBounds(secondThing.c_str(), 0, 0, &x1, &y1, &largeFontWidth, &largeFontHeight);
-  if (largeFontWidth >= (display.width()-xMargins))
-  {
-    debugMessage(String("ERROR: secondThing '") + secondThing + "' with large font is " + abs(display.width()-largeFontWidth-xMargins) + " pixels too long", 1);
-    display.setFont(&FreeSans12pt7b);
-    display.getTextBounds(secondThing.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
-    if (smallFontWidth >= (display.width()-xMargins))
+    display.getTextBounds(firstThing.c_str(), 0, 0, &x1, &y1, &largeFontWidth, &largeFontHeight);
+    if (largeFontWidth >= (display.width()-xMargins))
     {
-      // text is too long even if we shrink text size
-      // display it truncated at larger size
-      // IMPROVEMENT: Is it two words we can split?
-      debugMessage(String("ERROR: secondThing '") + secondThing + "' with small font is " + abs(display.width()-smallFontWidth-xMargins) + " pixels too long", 1);
-      display.setFont(&FreeSans18pt7b);
+      debugMessage(String("ERROR: firstThing '") + firstThing + "' with large font is " + abs(display.width()-largeFontWidth-xMargins) + " pixels too long", 1);
+      display.setFont(&FreeSans12pt7b);
+      display.getTextBounds(firstThing.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
+      if (smallFontWidth >= (display.width()-xMargins))
+      {
+        // text is too long even if we shrink text size
+        // display it truncated at larger size
+        // IMPROVEMENT: Is it two words we can split?
+        debugMessage(String("ERROR: firstThing '") + firstThing + "' with small font is " + abs(display.width()-smallFontWidth-xMargins) + " pixels too long", 1);
+        display.setFont(&FreeSans18pt7b);
+      }
     }
-  }
-  display.print(secondThing);
+    display.print(firstThing);
 
-  // display thirdThing
-  display.setCursor(xMargins,274);
-  display.setFont(&FreeSans18pt7b);
-  display.getTextBounds(thirdThing.c_str(), 0, 0, &x1, &y1, &largeFontWidth, &largeFontHeight);
-  if (largeFontWidth >= (display.width()-xMargins))
-  {
-    debugMessage(String("ERROR: thirdThing '") + thirdThing + "' with large font is " + abs(display.width()-largeFontWidth-xMargins) + " pixels too long", 1);
-    display.setFont(&FreeSans12pt7b);
-    display.getTextBounds(thirdThing.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
-    if (smallFontWidth >= (display.width()-xMargins))
+    // display secondThing
+    display.setCursor(xMargins,184);
+      display.setFont(&FreeSans18pt7b);
+    display.getTextBounds(secondThing.c_str(), 0, 0, &x1, &y1, &largeFontWidth, &largeFontHeight);
+    if (largeFontWidth >= (display.width()-xMargins))
     {
-      // text is too long even if we shrink text size
-      // display it truncated at larger size
-      // IMPROVEMENT: Is it two words we can split?
-      debugMessage(String("ERROR: thirdThing '") + thirdThing + "' with small font is " + abs(display.width()-smallFontWidth-xMargins) + " pixels too long", 1);
-      display.setFont(&FreeSans18pt7b);
+      debugMessage(String("ERROR: secondThing '") + secondThing + "' with large font is " + abs(display.width()-largeFontWidth-xMargins) + " pixels too long", 1);
+      display.setFont(&FreeSans12pt7b);
+      display.getTextBounds(secondThing.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
+      if (smallFontWidth >= (display.width()-xMargins))
+      {
+        // text is too long even if we shrink text size
+        // display it truncated at larger size
+        // IMPROVEMENT: Is it two words we can split?
+        debugMessage(String("ERROR: secondThing '") + secondThing + "' with small font is " + abs(display.width()-smallFontWidth-xMargins) + " pixels too long", 1);
+        display.setFont(&FreeSans18pt7b);
+      }
     }
-  }
-  display.print(thirdThing);
+    display.print(secondThing);
 
-  display.display();
+    // display thirdThing
+    display.setCursor(xMargins,274);
+    display.setFont(&FreeSans18pt7b);
+    display.getTextBounds(thirdThing.c_str(), 0, 0, &x1, &y1, &largeFontWidth, &largeFontHeight);
+    if (largeFontWidth >= (display.width()-xMargins))
+    {
+      debugMessage(String("ERROR: thirdThing '") + thirdThing + "' with large font is " + abs(display.width()-largeFontWidth-xMargins) + " pixels too long", 1);
+      display.setFont(&FreeSans12pt7b);
+      display.getTextBounds(thirdThing.c_str(), 0, 0, &x1, &y1, &smallFontWidth, &smallFontHeight);
+      if (smallFontWidth >= (display.width()-xMargins))
+      {
+        // text is too long even if we shrink text size
+        // display it truncated at larger size
+        // IMPROVEMENT: Is it two words we can split?
+        debugMessage(String("ERROR: thirdThing '") + thirdThing + "' with small font is " + abs(display.width()-smallFontWidth-xMargins) + " pixels too long", 1);
+        display.setFont(&FreeSans18pt7b);
+      }
+    }
+    display.print(thirdThing);
+  }
+  while (display.nextPage());
   debugMessage("screenThreeThings end",1);
 }
 
@@ -492,16 +517,20 @@ void screenSensors()
   const uint16_t yTempValue = yTempLabel + 40;
   const uint16_t yHumidityValue = yHumidityLabel + 40;
 
-  display.clearBuffer();
-  
-  // // draws battery in the lower right corner. -3 in first parameter accounts for battery nub
-  // screenHelperBatteryStatus((display.width()-xMargins-batteryBarWidth-3),(display.height()-yBottomMargin-batteryBarHeight),batteryBarWidth,batteryBarHeight);
+  display.setFullWindow();
+  display.firstPage();
+  do
+  {
+    display.fillScreen(GxEPD_WHITE);  
+    // // draws battery in the lower right corner. -3 in first parameter accounts for battery nub
+    // screenHelperBatteryStatus((display.width()-xMargins-batteryBarWidth-3),(display.height()-yBottomMargin-batteryBarHeight),batteryBarWidth,batteryBarHeight);
 
-  // label
-  display.setFont(&FreeSans12pt7b);
-  display.setCursor(xMargins, yscreenLabel);
-  display.print("Air Quality");
+    // label
+    display.setFont(&FreeSans12pt7b);
+    display.setCursor(xMargins, yscreenLabel);
+    display.print("Air Quality");
 
+<<<<<<< Updated upstream
   // co2 main line
   display.setFont(&FreeSans18pt7b);
   display.setCursor(xMidMargin-30, yCO2Label);
@@ -516,32 +545,48 @@ void screenSensors()
   display.setFont();
   display.setCursor((xMargins+80),(yCO2Value+7));
   display.print("(" + String(sensorData.ambientCO2) + ")");
+=======
+    // co2 main line
+    display.setFont(&FreeSans18pt7b);
+    display.setCursor(xMidMargin-30, yCO2Label);
+    display.print("CO");
+    display.setFont(&FreeSans9pt7b);
+    display.setCursor(xMidMargin+19,(yCO2Label+5));
+    display.print("2");
+    // co2 value
+    display.setFont(&FreeSans24pt7b);
+    display.setCursor(xMidMargin-55,yCO2Value);
+    display.print(warningLabels[co2Range(sensorData.ambientCO2)]);
+    display.setFont();
+    display.setCursor((xMargins+80),(yCO2Value+7));
+    display.print("(" + String(sensorData.ambientCO2) + ")");
+>>>>>>> Stashed changes
 
-  // indoor tempF
-  // label
-  display.setFont(&FreeSans18pt7b);
-  display.setCursor(xMidMargin-45,yTempLabel);
-  display.print("Temp");
-  // value
-  display.setFont(&FreeSans24pt7b);
-  display.setCursor(xMidMargin-25,yTempValue);
-  display.print(String((int)(sensorData.ambientTemperatureF + .5)));
-  display.setFont(&meteocons24pt7b);
-  display.print("+");
+    // indoor tempF
+    // label
+    display.setFont(&FreeSans18pt7b);
+    display.setCursor(xMidMargin-45,yTempLabel);
+    display.print("Temp");
+    // value
+    display.setFont(&FreeSans24pt7b);
+    display.setCursor(xMidMargin-25,yTempValue);
+    display.print(String((int)(sensorData.ambientTemperatureF + .5)));
+    display.setFont(&meteocons24pt7b);
+    display.print("+");
 
-  // indoor humidity
-  //label
-  display.setFont(&FreeSans18pt7b);
-  display.setCursor(xMidMargin-30,yHumidityLabel);
-  display.print("RH");
-  //value
-  display.setFont(&FreeSans24pt7b);
-  display.setCursor(xMidMargin-25, yHumidityValue);
-  display.print(String((int)(sensorData.ambientHumidity + 0.5)));
-  // original icon ratio was 5:7?
-  display.drawBitmap(xMidMargin+35,yHumidityValue-25,epd_bitmap_humidity_icon_sm4,20,28,EPD_BLACK);
-
-  display.display();
+    // indoor humidity
+    //label
+    display.setFont(&FreeSans18pt7b);
+    display.setCursor(xMidMargin-30,yHumidityLabel);
+    display.print("RH");
+    //value
+    display.setFont(&FreeSans24pt7b);
+    display.setCursor(xMidMargin-25, yHumidityValue);
+    display.print(String((int)(sensorData.ambientHumidity + 0.5)));
+    // original icon ratio was 5:7?
+    display.drawBitmap(xMidMargin+35,yHumidityValue-25,epd_bitmap_humidity_icon_sm4,20,28,GxEPD_BLACK);
+  }
+  while (display.nextPage());
   debugMessage("screenSensors end",1);
 }
 
@@ -557,11 +602,11 @@ void screenHelperBatteryStatus(uint16_t initialX, uint16_t initialY, uint8_t bar
   if (batteryRead(batteryReadsPerSample))
   {
     // battery nub; width = 3pix, height = 60% of barHeight
-    display.fillRect((initialX+barWidth), (initialY+(int(barHeight/5))), 3, (int(barHeight*3/5)), EPD_BLACK);
+    display.fillRect((initialX+barWidth), (initialY+(int(barHeight/5))), 3, (int(barHeight*3/5)), GxEPD_BLACK);
     // battery border
-    display.drawRect(initialX, initialY, barWidth, barHeight, EPD_BLACK);
+    display.drawRect(initialX, initialY, barWidth, barHeight, GxEPD_BLACK);
     // battery percentage as rectangle fill, 1 pixel inset from the battery border
-    display.fillRect((initialX + 2), (initialY + 2), int(0.5+(hardwareData.batteryPercent*((barWidth-4)/100.0))), (barHeight - 4), EPD_BLACK);
+    display.fillRect((initialX + 2), (initialY + 2), int(0.5+(hardwareData.batteryPercent*((barWidth-4)/100.0))), (barHeight - 4), GxEPD_BLACK);
     // DEBUG USE ONLY, display voltage level in the icon, requires changing bar height to 14 pixels
     // display.setFont(); // switch to generic small font
     // display.setCursor(initialX +2 ,initialY + 2);
@@ -592,7 +637,7 @@ void screenHelperQRCode(uint16_t initialX, uint16_t initialY, String url)
         // {
         //   for(uint16_t yi= y*qrCodeScaling + 2; yi < y*qrCodeScaling + qrCodeScaling + 2; yi++)
           {
-            display.writePixel(xi+initialX, yi+initialY, EPD_BLACK);
+            display.writePixel(xi+initialX, yi+initialY, GxEPD_BLACK);
           }
         }
       }
@@ -630,7 +675,7 @@ void screenHelperSparkLine(uint16_t initialX, uint16_t initialY, uint16_t xWidth
   // debugMessage(String("xPixelStep is ") + xPixelStep + ", yPixelStep is " + yPixelStep, 2);
 
   // TEST ONLY : sparkline border box
-  display.drawRect(initialX,initialY, xWidth,yHeight, EPD_BLACK);
+  display.drawRect(initialX,initialY, xWidth,yHeight, GxEPD_BLACK);
 
   // // determine sparkline x,y values
   // for (uint8_t loop = 0; loop < sensorSampleSize; loop++) {
@@ -927,7 +972,7 @@ void powerDisable(uint32_t deepSleepTime)
   debugMessage("powerDisable start",1);
 
   // power down epd
-  display.powerDown();
+  display.powerOff();
   digitalWrite(EPD_RESET, LOW);  // hardware power down mode
   debugMessage("power off: epd",1);
 
