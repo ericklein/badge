@@ -5,10 +5,10 @@
   See README.md for target information and revision history
 */
 
-#include "config.h"   // hardware and internet configuration parameters
-#include "qrcoderm.h" // QR code support
-#include <FastLED.h>
-#include <LEDControl.h>
+#include "config.h"     // hardware and internet configuration parameters
+#include <FastLED.h>    // https://github.com/FastLED/FastLED, LED control
+#include <LEDControl.h> // multi LED strip async control
+#include "qrcoderm.h"   // QR code support
 
 // hardware support
 
@@ -18,7 +18,7 @@
   SensirionI2cScd4x co2Sensor;
 
   // battery voltage sensor
-  #include <Adafruit_LC709203F.h>
+  #include <Adafruit_LC709203F.h> // https://github.com/adafruit/Adafruit_LC709203F, battery voltage sensor
   Adafruit_LC709203F lc;
 #endif
 
@@ -649,7 +649,7 @@ void screenHelperSparkLine(uint16_t initialX, uint16_t initialY, uint16_t xWidth
 bool batteryRead(uint8_t reads)
 // Description: sets global battery values from i2c battery monitor or analog pin value (on supported boards)
 // Parameters: integer that sets how many times the analog pin is sampled
-// Output: NA (globals)
+// Output: true if current battery condition written into globals
 // Improvement: MAX17084 support
 {
   #ifdef HARDWARE_SIMULATE
@@ -970,11 +970,15 @@ uint8_t co2Range(uint16_t co2)
   return range;
 }
 
-void debugMessage(String messageText, uint8_t messageLevel)
-// wraps Serial.println as #define conditional
+void debugMessage(String messageText, uint8_t verbosityLevel)
+// Description: wraps println() with increasing levels (verbosity) of debug message output
+// Parameters:  debug message as String, 
+//  verbosityLevel increases for more detailed debug information, currently 1 and 2 are used
+// Output : NA (void)
+// Improvement : ?
 {
   #ifdef DEBUG
-    if (messageLevel <= DEBUG)
+    if (verbosityLevel <= DEBUG)
     {
       Serial.println(messageText);
       Serial.flush();  // Make sure the message gets output (before any sleeping...)
